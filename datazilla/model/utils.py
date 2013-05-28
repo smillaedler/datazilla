@@ -10,6 +10,7 @@ Model-layer utility functions.
 import time
 import datetime
 import sys
+from model.base import PerformanceTestModel
 
 def is_number(s):
     try:
@@ -120,4 +121,52 @@ def build_replacement(col_data):
 def println(val, debug):
     if debug:
         sys.stdout.write("{0}\n".format(str(val)))
+
+
+
+def nvl(a, b):
+    #pick the first none-null value
+    if a is None:
+        return b
+    return a
+
+
+#raise an exception with a trace for the cause too
+def error(description, cause):
+    raise Exception(description, cause)  #placeholder 'till I know how that is done
+
+
+
+
+
+
+
+
+
+
+## mixin for the database connection object
+## Insert dictionary of values into table
+def insert (self, tableName, dict):
+    def quote(value):
+        return "`"+value+"`"    #MY SQL QUOTE OF COLUMN NAMES
+
+    def param(value):
+        return "%("+value+")s"
+
+    keys = dict.keys()
+
+    command = "INSERT INTO "+quote(tableName)+"("+\
+              ",".join([quote(k) for k in keys])+\
+              ") VALUES ("+\
+              ",".join([param[k] for k in keys])+\
+              ")"
+
+    self.execute(command, dict)
+
+## return a database connection
+def getDatabaseConnection(project, schema):
+    connection = PerformanceTestModel(project).sources[schema].dhub
+    connection.insert = insert
+    return connection
+
 

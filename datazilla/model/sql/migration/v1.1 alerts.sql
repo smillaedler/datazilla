@@ -45,6 +45,19 @@ CREATE PROCEDURE get_version(
 END;;
 
 
+DROP FUNCTION IF EXISTS bayesian_add;;
+CREATE FUNCTION bayesian_add (
+	a	DOUBLE,
+	b	DOUBLE
+) 
+	RETURNS DOUBLE
+ 	DETERMINISTIC
+	NO SQL
+BEGIN
+	RETURN a*b/(a*b+(1-a)*(1-b));
+END;;
+
+
 
 DROP PROCEDURE IF EXISTS `migrate v1.1`;;
 CREATE PROCEDURE `migrate v1.1` ()
@@ -79,13 +92,13 @@ m11: BEGIN
 	);
 	INSERT INTO alert_mail_reasons VALUES (
 		'page_threshold_limit', 
-		'The page has performed badly ({EXPECTED}), {ACTUAL} or less was expected'
+		'The page has performed badly (${expected}), ${actual} or less was expected'
 		date_add(UTC_TIMESTAMP(), INTERVAL -30 DAY),
 		null
 	);		
 	INSERT INTO alert_mail_reasons VALUES (
 		'exception_point', 
-		'The test has performed worse then usual by {AMOUNT} standard deviations ({CONFIDENCE})'
+		'The test has performed worse then usual by ${amount} standard deviations (${confidence})'
 		date_add(UTC_TIMESTAMP(), INTERVAL -30 DAY),
 		'{"minOffset":0.999}'
 	);		
@@ -127,6 +140,7 @@ m11: BEGIN
 		mail_state 		VARCHAR(10) NOT NULL,  ##WHAT THE MAILER HAS DONE WITH THIS ALERT 
 		create_time		DATETIME NOT NULL,		##WHEN THIS ISSUE WAS FIRST IDENTIFIED
 		last_updated	DATETIME NOT NULL, 	##WHEN THIS ISSUE WAS LAST UPDATED WITH NEW INFO
+		last_sent		DATETIME,			##WHEN THIS ISSUE WAS LAST SENT TO EMAIL
 		test_run		INTEGER NOT NULL, 	##REFERENCE THE TEST 
 		reason			VARCHAR(20) NOT NULL,  ##REFERNCE TO STANDARD SET OF REASONS
 		details			VARCHAR(2000) NOT NULL, ##JSON OF SPECIFIC DETAILS

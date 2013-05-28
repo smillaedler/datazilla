@@ -1,6 +1,6 @@
 from datetime import timedelta, datetime
+from model.utils import getDatabaseConnection, error, nvl
 
-from utils import error, nvl
 
 def exception_point ():
     ##find single points that deviate from the trend
@@ -21,12 +21,12 @@ def exception_point ():
 
 #simplest of rules to test the dataflow from test_run, to alert, to email
 #may prove slightly useful too!
-def page_threshold_limit ():
+def page_threshold_limit (project):
     typeName="page_threshold_limit"     #name of the reason in alert_mail_reason
 
     try:
         ##point out any pages that are breaking human-set threshold limits
-        db = None
+        db = getDatabaseConnection(project, "perftest")
 
         #CALCULATE HOW FAR BACK TO LOOK
         last_run, description = db.query("SELECT last_run, description FROM alert_mail_reasons WHERE code=%s", typeName)[0]
@@ -43,7 +43,8 @@ def page_threshold_limit ():
                 t.std,
                 h.threshold,
                 h.severity,
-                h.reason
+                h.reason,
+                m.id alert_id
             FROM
                 alert_mail_page_thresholds h
             JOIN
@@ -53,7 +54,7 @@ def page_threshold_limit ():
             WHERE
                 h.threshold<t.mean AND
                 t.push_date>%s AND
-                m.id IS NULL 
+                (m.id IS NULL OR m.status='obsolete')
         """, typeName, minDate.toUnixTime())
 
         #FOR EACH PAGE THAT BREAKS LIMITS
@@ -61,8 +62,8 @@ def page_threshold_limit ():
             alert_id = db.query("SELECT util_newID() id FROM DUAL")[0]["id"]
 
             alert = {
-                "id":alert_id,
-    	        "mail_state":"new",
+                "id":nvl(page["alert_id"], alert_id),
+    	        "status":"new",
                 "create_time":datetime.utcnow(),
                 "last_updated":datetime.utcnow(),
                 "test_run":page["test_run_id"],
@@ -72,32 +73,32 @@ def page_threshold_limit ():
                 "confidence":1.0  #USING NORMAL DIST ASSUMPTION WE CAN MESS WITH CONFIDENCE EVEN BEFORE THRESHOLD IS HIT!
             }
 
-            db.insert=nvl(db.insert, insert)#upgrade db object
-            db.insert("alert_mail", alert)
+            if page["mail_id"] is None:
+                db.insert("alert_mail", alert)
+            else:
+                db.update("alert_mail", alert)
+
+
+        #OBSOLETE THE ALERTS THAT SHOULD NO LONGER GET SENT
+        db.execute("""
+            UPDATE alert_mail SET status='obsolete' WHERE id IN (
+                SELECT
+                    m.id
+                FROM
+                    alert_mail m
+                JOIN
+                    test_all_dimensions t ON m.test_run=t.test_run_id
+                JOIN
+                    alert_mail_page_thresholds h on t.page_id=h.page_id
+                WHERE
+                    m.reason=%s AND
+                    h.threshold>=t.mean AND
+                    t.push_date>%s
+            )
+        """, typeName, minDate.toUnixTime())
 
     except Exception, e:
         error("Could not perform threshold comparisons", e)
 
-## mixin for the database connection object
-## Insert dictionary of values into table
-def insert (self, tableName, dict):
-    def quote(value):
-        return "`"+value+"`"    #MY SQL QUOTE OF COLUMN NAMES
-
-    def param(value):
-        return "%("+value+")s"
-
-    keys = dict.keys()
-
-    command = "INSERT INTO "+quote(tableName)+"("+\
-              ",".join([quote(k) for k in keys])+\
-              ") VALUES ("+\
-              ",".join([param[k] for k in keys])+\
-              ")"
-
-    self.execute(command, dict)
-
-
 
       
-

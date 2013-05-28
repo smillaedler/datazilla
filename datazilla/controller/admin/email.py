@@ -7,15 +7,16 @@ import smtplib
 import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from model.utils import getDatabaseConnection, error, nvl
 import settings
-from utils import nvl, error
+
 
 #if there are emails, then send them
-def send_mails():
+def send_mails(project):
 
 
     ## GET DB CONNECTION
-    db = None
+    db = getDatabaseConnection(project, "perftest")
 
 
     ##VERIFY self SHOULD BE THE ONE PERFORMING OPS (TO PREVENT MULTIPLE INSTANCES NEEDLESSLY RUNNING)
