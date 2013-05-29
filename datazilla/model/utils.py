@@ -12,6 +12,7 @@ import datetime
 import sys
 
 
+
 def is_number(s):
     try:
         float(s)
@@ -133,35 +134,5 @@ def nvl(a, b):
 
 
 
-
-
-
-
-
-
-## mixin for the database connection object
-## Insert dictionary of values into table
-def insert (self, tableName, dict):
-    def quote(value):
-        return "`"+value+"`"    #MY SQL QUOTE OF COLUMN NAMES
-
-    def param(value):
-        return "%("+value+")s"
-
-    keys = dict.keys()
-
-    command = "INSERT INTO "+quote(tableName)+"("+\
-              ",".join([quote(k) for k in keys])+\
-              ") VALUES ("+\
-              ",".join([param[k] for k in keys])+\
-              ")"
-
-    self.execute(command, dict)
-
-## return a database connection
-def getDatabaseConnection(project, schema):
-    connection = PerformanceTestModel(project).sources[schema].dhub
-    connection.insert = insert
-    return connection
 
 

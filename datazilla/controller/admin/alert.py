@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta
 import json
 from string import Template
-from controller.admin.math_bayes import bayesianAdd
-from model.util.Debug import D
+from datazilla.controller.admin.math_bayes import bayesianAdd
+from datazilla.model.util.debug import D
 
 
 ALERT_LIMIT = bayesianAdd(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
 TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div><hr>")
-RESEND_AFTER = timedelta(day=1)
+RESEND_AFTER = timedelta(days=1)
 
 
 def send_alerts(env):
@@ -81,5 +81,5 @@ def send_alerts(env):
         db.commit()
     except Exception, e:
         db.rollback()
-        error("Could not send alerts", e)
+        D.error("Could not send alerts", e)
 

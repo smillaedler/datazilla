@@ -2,15 +2,17 @@ from optparse import make_option
 
 
 from base import ProjectBatchCommand
-from model.util.Bunch import Bunch
-from model.util.Debug import D
-from controller.admin import alert
-from model.utils import getDatabaseConnection
+from datazilla.model.util.bunch import Bunch
+from datazilla.model.util.db import getDatabaseConnection
+from datazilla.model.util.debug import D
+
+
+from datazilla.controller.admin.alert import send_alerts
 
 
 class Command(ProjectBatchCommand):
 
-    LOCK_FILE = "run_metrics"
+#    LOCK_FILE = "run_metrics"
 
     help = "Run alert methods."
 
@@ -20,13 +22,14 @@ class Command(ProjectBatchCommand):
                     dest='debug',
                     default=None,
                     help=('Send stuff to stdout')
-        ))
+        ),
+        )
 
 
     def handle_project(self, project, **options):
         D.println("Running alert for project ${project}", {"project":project})
 
-        alert.send_alerts(Bunch({
+        send_alerts(Bunch({
             "db":getDatabaseConnection(project, "perftest"),
             "debug":options.get('debug')
         }))

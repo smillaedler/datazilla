@@ -1,3 +1,10 @@
+#####
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+#####
+
+
 from string import Template
 import sys
 
@@ -10,7 +17,7 @@ class D(object):
         sys.stdout.write(Template(template).safe_substitute(params)+"\n")
 
     @staticmethod
-    def warning(template, params, cause):
+    def warning(template, params, cause=None):
         if type(params) is Exception:
             cause=params
             params=None
@@ -19,7 +26,7 @@ class D(object):
 
     #raise an exception with a trace for the cause too
     @staticmethod
-    def error(template, params, cause):
+    def error(template, params=None, cause=None):
         if type(params) is Exception:
             cause=params
             params=None
@@ -34,7 +41,7 @@ D.info=D.println
 
 
 class Except(Exception):
-    def __init__(self, template, params, cause):
+    def __init__(self, template, params, cause=None):
         super(Exception, self).__init__(self)
         self.template=template
         self.params=params
