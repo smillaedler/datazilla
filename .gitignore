@@ -6,3 +6,4 @@ docs/_build/
 .DS_Store
 .idea
 datazilla.iml
+run_metrics*
