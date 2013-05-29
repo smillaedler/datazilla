@@ -12,15 +12,12 @@ import settings
 
 
 #if there are emails, then send them
-def send_mails(project):
+def send_mails(env):
+    assert env.db is not None
 
-
-    ## GET DB CONNECTION
-    db = getDatabaseConnection(project, "perftest")
-
+    db = env.db
 
     ##VERIFY self SHOULD BE THE ONE PERFORMING OPS (TO PREVENT MULTIPLE INSTANCES NEEDLESSLY RUNNING)
-
     db.begin()
 
     try:
@@ -63,12 +60,14 @@ def send_mails(project):
         db.execute("UPDATE email_notify SET new_mail=0")
 
         db.commit()
+        db.close()
     except Exception, e:
         db.rollback()
-        error("Could not send emails", e)
+        db.close()
+        D.error("Could not send emails", e)
 
 
-    ##RETURN CONNECTION TO POOL
+
 
 
 ## SNAGGED FROM http://hg.mozilla.org/automation/orangefactor/file/8bb01b4aa231/sendemail.py

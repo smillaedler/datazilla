@@ -1,17 +1,23 @@
 from datetime import datetime, timedelta
 import json
 from string import Template
-from model.utils import getDatabaseConnection, error
+from controller.admin.math_bayes import bayesianAdd
+from model.util.Debug import D
+
 
 ALERT_LIMIT = bayesianAdd(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
-TEMPLATE = Template("<div>${score} - ${revision} - ${reason}</div><hr>")
+TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div><hr>")
 RESEND_AFTER = timedelta(day=1)
 
-def send_alerts(project):
 
-    #WHAT ALERTS HAVE NOT BEEN SENT?
-    db = getDatabaseConnection(project, "perftest")
+def send_alerts(env):
+    assert env.db is not None
 
+    db = env.db
+
+
+    db.begin()
+    
     try:
         newAlerts = db.query("""
             SELECT
@@ -47,14 +53,20 @@ def send_alerts(project):
             details=json.loads(alert["details"])
             #EXPAND THE MESSAGE
             body=body+TEMPLATE.substitute({
-                "score":bayesian_add(alert["severity"], alert["confidence"]),
+                "score":round(bayesian_add(alert["severity"], alert["confidence"])*100, 0)+"%",  #AS A PERCENT
                 "test_run_id":alert["test_run_id"],
                 "revision":alert["revision"],
                 "reason":Template(alert["description"]).substitute(details)
                 })
 
+
+#        listeners = SQLQuery.run({
+#            "select":{"value":"email"},
+#            "from":"alert_email_listener"
+#        })
         #poor souls that signed up for emails
-        listeners = ";".join([x["email"] for x in db.query("SELECT email FROM alert_email_listeners")])
+        listeners = [x["email"] for x in db.query("SELECT email FROM alert_email_listeners")]
+        listeners = ";".join(listeners)
 
         db.execute("CALL email_send(%{to}s, %{subject}a, %{body}s, null)", {
             "to":listeners,
@@ -62,8 +74,9 @@ def send_alerts(project):
             "body":body
         })
 
-        db.execute("UPDATE alert_email SET last_sent=%s WHERE id IN (%s)", datetime.utcnow(), newAlerts)
-        db.execute("UPDATE alert_email SET last_sent=%s WHERE id IN ("+",".join("%s"*len(newAlerts))+")", datetime.utcnow(), [a["id"] for a in newAlerts])
+        #I HOPE I CAN SEND ARRAYS OF NUMBERS
+        db.execute("UPDATE alert_email SET last_sent=%s WHERE id IN (%s)", [datetime.utcnow(), json.dumps(newAlerts)])
+#        db.execute("UPDATE alert_email SET last_sent=%s WHERE id IN ("+",".join("%s"*len(newAlerts))+")", datetime.utcnow(), [a["id"] for a in newAlerts])
 
         db.commit()
     except Exception, e:

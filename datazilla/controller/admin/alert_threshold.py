@@ -1,32 +1,21 @@
 from datetime import timedelta, datetime
+from model.util.Debug import D
 from model.utils import getDatabaseConnection, error, nvl
 
-
-def exception_point ():
-    ##find single points that deviate from the trend
-
-    #LOAD CONFIG
-
-    #CALCULATE HOW FAR BACK TO LOOK
-    #BRING IN ALL NEEDED DATA
-    #FOR EACH PAGE
-        #ROLL THROUGH SERIES LOOKING FOR EXCEPTIONS THAT DEVIATE GREATLY
-        #CHECK IF ALREADY AN ALERT
-            #IF SO, UPDATE
-            #IF NOT, ADD
-    pass
 
 
 
 
 #simplest of rules to test the dataflow from test_run, to alert, to email
 #may prove slightly useful too!
-def page_threshold_limit (project):
+##point out any pages that are breaking human-set threshold limits
+def page_threshold_limit (env):
+    assert env.db is not None
+    
     typeName="page_threshold_limit"     #name of the reason in alert_mail_reason
 
     try:
-        ##point out any pages that are breaking human-set threshold limits
-        db = getDatabaseConnection(project, "perftest")
+        db = env.db
 
         #CALCULATE HOW FAR BACK TO LOOK
         last_run, description = db.query("SELECT last_run, description FROM alert_mail_reasons WHERE code=%s", typeName)[0]
@@ -55,7 +44,7 @@ def page_threshold_limit (project):
                 h.threshold<t.mean AND
                 t.push_date>%s AND
                 (m.id IS NULL OR m.status='obsolete')
-        """, typeName, minDate.toUnixTime())
+        """, [typeName, minDate.toUnixTime()])
 
         #FOR EACH PAGE THAT BREAKS LIMITS
         for page in pages:
@@ -91,11 +80,15 @@ def page_threshold_limit (project):
                 JOIN
                     alert_mail_page_thresholds h on t.page_id=h.page_id
                 WHERE
-                    m.reason=%s AND
+                    m.reason=%{reason}s AND
                     h.threshold>=t.mean AND
-                    t.push_date>%s
-            )
-        """, typeName, minDate.toUnixTime())
+                    t.push_date>%{time}s
+            )""",
+            {
+                "reason":typeName,
+                "time":minDate.toUnixTime()
+            }
+        )
 
     except Exception, e:
         error("Could not perform threshold comparisons", e)

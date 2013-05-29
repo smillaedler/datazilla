@@ -10,7 +10,7 @@ Model-layer utility functions.
 import time
 import datetime
 import sys
-from model.base import PerformanceTestModel
+
 
 def is_number(s):
     try:
@@ -129,11 +129,6 @@ def nvl(a, b):
     if a is None:
         return b
     return a
-
-
-#raise an exception with a trace for the cause too
-def error(description, cause):
-    raise Exception(description, cause)  #placeholder 'till I know how that is done
 
 
 
