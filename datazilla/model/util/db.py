@@ -3,8 +3,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 #####
-
-
+import MySQLdb
+from django.conf import LazySettings
+from datazilla import settings
 
 from datazilla.model.base import PerformanceTestModel
 from datazilla.model.util.debug import D
@@ -12,8 +13,16 @@ from datazilla.model.util.debug import D
 
 ## return a database connection
 def getDatabaseConnection(project, schema):
-    connection = PerformanceTestModel(project).sources[schema].dhub
-    return Connection(connection)
+
+    settings = LazySettings()
+    
+    return Connection(MySQLdb.connect(
+        host=settings.DATAZILLA_DATABASE_HOST,
+        port=int(settings.DATAZILLA_DATABASE_PORT),
+        user=settings.DATAZILLA_DATABASE_USER,
+        passwd=settings.DATAZILLA_DATABASE_PASSWORD,
+        db=project+"_"+schema+"_1"
+    ))
 
 
 
@@ -22,27 +31,36 @@ class Connection():
 
     def __init__(self, db):
         self.db=db
+        self.cursor=None
+        self.committed=True
 
     def begin(self):
         if self.cursor is not None:
             D.error("multiple begin not supported. yet")
         self.cursor=self.db.cursor()
+        self.committed=False
 
     def close(self):
+        if not self.committed:
+           D.error("expecting commit() or rollback() before close")
         self.cursor.close()
         self.cursor=None
 
     def commit(self):
-        self.cursor.commit()
+        self.db.commit()
+        self.committed=True
 
     def rollback(self):
-        self.cursor.rollback()
+        self.db.rollback()
+        self.committed=True
 
-    def query(self, **args):
-        self.cursor.query(args)
+    def query(self, sql, param=None):
+        self.cursor.execute(sql, param)
+        return self.cursor.fecthall()
 
-    def execute(self, **args):
-        self.cursor.execute(args)
+    def execute(self, sql, param=None):
+        self.cursor.execute(sql, param)
+        return self.cursor.fecthall()
 
         
     ## Insert dictionary of values into table
