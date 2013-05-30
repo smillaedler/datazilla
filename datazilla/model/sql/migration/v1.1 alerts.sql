@@ -72,55 +72,56 @@ m11: BEGIN
 	
 	DROP TABLE IF EXISTS alert_mail;
 	DROP TABLE IF EXISTS alert_mail_reasons;
-	DROP TABLE IF EXISTS alert_mail_states;
+	DROP TABLE IF EXISTS alert_mail_stati;
 	DROP TABLE IF EXISTS alert_mail_listeners;
-	DROP TABLE IF EXISTS alter_mail_thresholds;
+	DROP TABLE IF EXISTS alert_mail_page_thresholds;
 	
-	CREATE TABLE alert_mail_states(
+	CREATE TABLE alert_mail_stati(
 		code			VARCHAR(10) NOT NULL PRIMARY KEY
 	);
-	INSERT INTO alert_mail_states VALUES ('new');		
-	INSERT INTO alert_mail_states VALUES ('sent');
-	INSERT INTO alert_mail_states VALUES ('obsolete');	##MAYBE THIS IS USEFUL
+	INSERT INTO alert_mail_stati VALUES ('new');
+	INSERT INTO alert_mail_stati VALUES ('obsolete');	##MAYBE THIS IS USEFUL
 
 
 	CREATE TABLE alert_mail_reasons (
 		code			VARCHAR(80) NOT NULL PRIMARY KEY,
 		description		VARCHAR(2000), ##MORE DETAILS ABOUT WHAT THIS IS
-		last_run		DATETIMe NOT NULL,
+		last_run		DATETIME NOT NULL,
 		config			VARCHAR(8000)
 	);
 	INSERT INTO alert_mail_reasons VALUES (
 		'page_threshold_limit', 
-		'The page has performed badly (${expected}), ${actual} or less was expected'
-		date_add(UTC_TIMESTAMP(), INTERVAL -30 DAY),
+		concat('The page has performed badly (',ascii(36),'{expected}), ',ascii(36),'{actual} or less was expected'),
+		date_add(now(), INTERVAL -30 DAY),
 		null
 	);		
 	INSERT INTO alert_mail_reasons VALUES (
 		'exception_point', 
-		'The test has performed worse then usual by ${amount} standard deviations (${confidence})'
-		date_add(UTC_TIMESTAMP(), INTERVAL -30 DAY),
+		concat('The test has performed worse then usual by ',ascii(36),'{amount} standard deviations (',ascii(36),'{confidence})'),
+		date_add(now(), INTERVAL -30 DAY),
 		'{"minOffset":0.999}'
 	);		
 
 
 	CREATE TABLE alert_mail_page_thresholds (
-		page_id			INTEGER NOT NULL PRIMARY KEY,
-		threshhold		DECIMAL(20, 10) NOT NULL,
+		id				INTEGER NOT NULL PRIMARY KEY,
+		page			INTEGER NOT NULL,
+		threshold		DECIMAL(20, 10) NOT NULL,
 		severity		DOUBLE NOT NULL, 
 		reason			VARCHAR(2000) NOT NULL,
 		time_added		DATETIME NOT NULL,
 		contact			VARCHAR(200) NOT NULL,
-		FOREIGN KEY (test_id) REFERENCES pages(id) 
+		FOREIGN KEY (page) REFERENCES pages(id) 
 	);
 	
 	INSERT INTO alert_mail_page_thresholds
 	SELECT
-		p.id
+		util_newID(),
+		p.id,
 		200,
 		0.5,
 		"(amazon.com) because I like to complain",
-		UTC_TIMESTAMP(),
+		now(),
 		"klahnakoski@mozilla.com"
 	FROM
 		pages p 
@@ -137,7 +138,7 @@ m11: BEGIN
 	
 	CREATE TABLE alert_mail (
 		id 				INTEGER NOT NULL PRIMARY KEY,
-		mail_state 		VARCHAR(10) NOT NULL,  ##WHAT THE MAILER HAS DONE WITH THIS ALERT 
+		status	 		VARCHAR(10) NOT NULL,  ##FOR ALERT LOGIC TO MARKUP, MAYBE AS obsolete
 		create_time		DATETIME NOT NULL,		##WHEN THIS ISSUE WAS FIRST IDENTIFIED
 		last_updated	DATETIME NOT NULL, 	##WHEN THIS ISSUE WAS LAST UPDATED WITH NEW INFO
 		last_sent		DATETIME,			##WHEN THIS ISSUE WAS LAST SENT TO EMAIL
@@ -149,7 +150,7 @@ m11: BEGIN
 		solution		VARCHAR(40), ##INTENT FOR HUMANS TO MARKUP THIS ALERT SO MACHINE KNOWS IF REAL, OR START ESCALATING
 		INDEX alert_lookup (test_run),
 		FOREIGN KEY alert_mail_test_run (test_run) REFERENCES test_run(id),
-		FOREIGN KEY alert_mail_mail_state (mail_state) REFERENCES alert_mail_states(code),
+		FOREIGN KEY alert_mail_status (status) REFERENCES alert_mail_stati(code),
 		FOREIGN KEY alert_mail_reason (reason) REFERENCES alert_mail_reasons(code)
 	);
 	

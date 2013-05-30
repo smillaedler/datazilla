@@ -132,7 +132,14 @@ def nvl(a, b):
     return a
 
 
+def indent(value):
+    return "\t"+"\n\t".join(value.rstrip().splitlines())
 
 
-
-
+def unindent(value):
+    num=100
+    lines=value.splitlines()
+    for l in lines:
+        trim=len(l.lstrip())
+        if trim>0: num=min(num, len(l)-len(l.lstrip()))
+    return "\n".join([l[num:] for l in lines])

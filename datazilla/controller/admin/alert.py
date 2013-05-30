@@ -14,7 +14,7 @@ def send_alerts(env):
     assert env.db is not None
 
     db = env.db
-
+    db.debug = env.debug
 
     db.begin()
     
@@ -33,16 +33,16 @@ def send_alerts(env):
             JOIN
                 alert_mail_reasons r on r.code=a.reason
             JOIN
-                test_all_dimensions t ON t.test_run_id=a.test_run_id
+                test_data_all_dimensions t ON t.test_run_id=a.test_run
             WHERE
                 (
                     a.last_sent IS NULL OR
                     a.last_sent < a.last_updated OR
-                    a.last_sent < %{lastSent}s
+                    a.last_sent < ${lastSent}
                 ) AND
                 a.status <> 'obsolete' AND
-                bayesian_add(a.severity, a.confidence) > %{alertLimit}s AND
-                a.solution IS NULL AND
+                bayesian_add(a.severity, a.confidence) > ${alertLimit} AND
+                a.solution IS NULL
             """, {
                 "lastSent":datetime.utcnow()-RESEND_AFTER,
                 "alertLimit":ALERT_LIMIT
@@ -65,18 +65,23 @@ def send_alerts(env):
 #            "from":"alert_email_listener"
 #        })
         #poor souls that signed up for emails
-        listeners = [x["email"] for x in db.query("SELECT email FROM alert_email_listeners")]
+        listeners=db.query("SELECT email FROM alert_mail_listeners")
+        listeners = [x["email"] for x in listeners]
         listeners = ";".join(listeners)
 
-        db.execute("CALL email_send(%{to}s, %{subject}a, %{body}s, null)", {
-            "to":listeners,
-            "subject":"Bad news from tests",
-            "body":body
-        })
+        db.call("email_send", (
+            listeners, #to
+            "Bad news from tests", #title
+            body, #body
+            None
+        ))
 
         #I HOPE I CAN SEND ARRAYS OF NUMBERS
-        db.execute("UPDATE alert_email SET last_sent=%s WHERE id IN (%s)", [datetime.utcnow(), json.dumps(newAlerts)])
-#        db.execute("UPDATE alert_email SET last_sent=%s WHERE id IN ("+",".join("%s"*len(newAlerts))+")", datetime.utcnow(), [a["id"] for a in newAlerts])
+        if len(newAlerts)>0:
+            db.execute(
+                "UPDATE alert_email SET last_sent=${time} WHERE id IN ${sendList}",
+                {"time":datetime.utcnow(), "sendList":newAlerts}
+            )
 
         db.commit()
     except Exception, e:

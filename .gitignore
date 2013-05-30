@@ -7,3 +7,7 @@ docs/_build/
 .idea
 datazilla.iml
 run_metrics*
+out
+*.lock
+*.sql
+data

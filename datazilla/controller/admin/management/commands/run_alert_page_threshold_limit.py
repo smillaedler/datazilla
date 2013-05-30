@@ -1,27 +1,25 @@
 from optparse import make_option
 from random import randint
-from django.conf import LazySettings
 
 from base import ProjectBatchCommand
+from datazilla.controller.admin.alert_threshold import page_threshold_limit
 from datazilla.model.util.bunch import Bunch
 from datazilla.model.util.db import getDatabaseConnection
 from datazilla.model.util.debug import D
 
-
-from datazilla.controller.admin.alert import send_alerts
 
 
 class Command(ProjectBatchCommand):
 
     LOCK_FILE = "run_metrics"+str(randint(100000000, 999999999))
 
-    help = "Run alert methods."
+    help = "Run alert_threashold methods."
 
     option_list = ProjectBatchCommand.option_list + (
         make_option('--debug',
                     action='store_true',
                     dest='debug',
-                    default=None,
+                    default=False,
                     help=('Send stuff to stdout')
         ),
         )
@@ -32,9 +30,9 @@ class Command(ProjectBatchCommand):
         try:
             D.println("Running alert for project ${project}", {"project":project})
 
-            send_alerts(Bunch({
+            page_threshold_limit(Bunch({
                 "db":getDatabaseConnection(project, "perftest"),
-                "debug":options.get('debug') or LazySettings().DATAZILLA_DEBUG,
+                "debug":options.get('debug')
             }))
         except Exception, e:
             D.warning("Failure to run alerts", cause=e)

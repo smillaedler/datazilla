@@ -1,6 +1,6 @@
 from datetime import timedelta, datetime
-from model.util.Debug import D
-from model.utils import getDatabaseConnection, error, nvl
+from datazilla.model.util.debug import D
+
 
 
 
@@ -9,6 +9,8 @@ from model.utils import getDatabaseConnection, error, nvl
 #simplest of rules to test the dataflow from test_run, to alert, to email
 #may prove slightly useful too!
 ##point out any pages that are breaking human-set threshold limits
+from datazilla.model.utils import nvl
+
 def page_threshold_limit (env):
     assert env.db is not None
     
@@ -16,15 +18,17 @@ def page_threshold_limit (env):
 
     try:
         db = env.db
+        db.debug = env.debug
 
         #CALCULATE HOW FAR BACK TO LOOK
-        last_run, description = db.query("SELECT last_run, description FROM alert_mail_reasons WHERE code=%s", typeName)[0]
-        minDate=last_run+timedelta(month=-1)
+        db.begin()
+        lasttime = db.execute("SELECT last_run, description FROM alert_mail_reasons WHERE code=${type}", {"type":typeName})[0]
+        minDate=lasttime["last_run"]+timedelta(weeks=-4)
 
         #FIND ALL PAGES THAT HAVE LIMITS TO TEST
         #BRING BACK ONES THAT BREAK LIMITS
         #BUT DO NOT ALREADY HAVE AN ALERTS EXISTING
-        pages = db.query("""
+        pages = db.execute("""
             SELECT
                 t.test_run_id,
                 t.n_replicates,
@@ -37,18 +41,20 @@ def page_threshold_limit (env):
             FROM
                 alert_mail_page_thresholds h
             JOIN
-                test_all_dimensions t ON t.page_id=h.page_id
+                test_data_all_dimensions t ON t.page_id=h.page
             LEFT JOIN
-                alert_mail m on m.test_run=t.test_run_id AND m.reason=%s
+                alert_mail m on m.test_run=t.test_run_id AND m.reason=${type}
             WHERE
                 h.threshold<t.mean AND
-                t.push_date>%s AND
+                t.push_date>${minDate} AND
                 (m.id IS NULL OR m.status='obsolete')
-        """, [typeName, minDate.toUnixTime()])
+            """,
+            {"type":typeName, "minDate":minDate}
+        )
 
         #FOR EACH PAGE THAT BREAKS LIMITS
         for page in pages:
-            alert_id = db.query("SELECT util_newID() id FROM DUAL")[0]["id"]
+            alert_id = db.execute("SELECT util_newID() id FROM DUAL")[0]["id"]
 
             alert = {
                 "id":nvl(page["alert_id"], alert_id),
@@ -91,7 +97,7 @@ def page_threshold_limit (env):
         )
 
     except Exception, e:
-        error("Could not perform threshold comparisons", e)
+        D.error("Could not perform threshold comparisons", e)
 
 
       
