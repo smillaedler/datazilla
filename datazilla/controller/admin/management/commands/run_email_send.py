@@ -1,14 +1,11 @@
 from optparse import make_option
 from random import randint
-from django.conf import LazySettings
 
 from base import ProjectBatchCommand
+from datazilla.controller.admin.email_send import email_send
 from datazilla.model.util.bunch import Bunch
 from datazilla.model.util.db import getDatabaseConnection
 from datazilla.model.util.debug import D
-
-
-from datazilla.controller.admin.alert import send_alerts
 from datazilla.model.utils import datazilla
 
 
@@ -31,9 +28,9 @@ class Command(ProjectBatchCommand):
     def handle_project(self, project, **options):
 
         try:
-            D.println("Running alert for project ${project}", {"project":project})
+            D.println("Running email for project ${project}", {"project":project})
 
-            send_alerts(Bunch({
+            email_send(Bunch({
                 "db":getDatabaseConnection(project, "perftest"),
                 "debug":options.get('debug') or datazilla.settings.DEBUG,
             }))

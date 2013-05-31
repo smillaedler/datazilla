@@ -4,4 +4,3 @@ from .metrics import (
     MetricMethodError
     )
 from .sql.models import DataSource, DatasetNotFoundError
-

@@ -10,8 +10,8 @@ Model-layer utility functions.
 import time
 import datetime
 import sys
-
-
+from django.conf import LazySettings
+from datazilla.model.util.bunch import Bunch
 
 def is_number(s):
     try:
@@ -132,14 +132,20 @@ def nvl(a, b):
     return a
 
 
-def indent(value):
-    return "\t"+"\n\t".join(value.rstrip().splitlines())
+##WHERE DO I PUT THE SETTINGS?
+settings=LazySettings()
+datazilla=Bunch({})
+datazilla.settings=Bunch({})
+debug=False
+for s in dir(settings):
+    k=s
+    v=getattr(settings, s)
+    if s.startswith("DATAZILLA_"):
+        k=s[10:]
+        datazilla.settings[k]=v
+    if k=="DEBUG":  ##ACCUMLUATE DEBUG INFO
+        debug=debug or v
 
+datazilla.settings.DEBUG=debug
 
-def unindent(value):
-    num=100
-    lines=value.splitlines()
-    for l in lines:
-        trim=len(l.lstrip())
-        if trim>0: num=min(num, len(l)-len(l.lstrip()))
-    return "\n".join([l[num:] for l in lines])
+#sys.stdout.write("done with settings")

@@ -5,8 +5,8 @@ from datazilla.controller.admin.math_bayes import bayesianAdd
 from datazilla.model.util.debug import D
 
 
-ALERT_LIMIT = bayesianAdd(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
-TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div><hr>")
+ALERT_LIMIT = 0.4 # bayesianAdd(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
+TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div><hr>\n")
 RESEND_AFTER = timedelta(days=1)
 
 
@@ -21,7 +21,7 @@ def send_alerts(env):
     try:
         newAlerts = db.query("""
             SELECT
-                a.id,
+                a.id alert_id,
                 a.reason,
                 r.description,
                 a.details,
@@ -31,9 +31,9 @@ def send_alerts(env):
             FROM
                 alert_mail a
             JOIN
-                alert_mail_reasons r on r.code=a.reason
+                alert_reasons r on r.code=a.reason
             JOIN
-                test_data_all_dimensions t ON t.test_run_id=a.test_run
+                test_data_all_dimensions t ON t.id=a.test_series
             WHERE
                 (
                     a.last_sent IS NULL OR
@@ -48,15 +48,18 @@ def send_alerts(env):
                 "alertLimit":ALERT_LIMIT
             })
 
+        if len(newAlerts)==0:
+            if env.debug: D.println("Nothing important to email")
+            return
+
         body=""
         for alert in newAlerts:
-            details=json.loads(alert["details"])
+            details=json.loads(alert.details)
             #EXPAND THE MESSAGE
             body=body+TEMPLATE.substitute({
-                "score":round(bayesian_add(alert["severity"], alert["confidence"])*100, 0)+"%",  #AS A PERCENT
-                "test_run_id":alert["test_run_id"],
-                "revision":alert["revision"],
-                "reason":Template(alert["description"]).substitute(details)
+                "score":str(round(bayesianAdd(alert.severity, alert.confidence)*100, 0))+"%",  #AS A PERCENT
+                "revision":alert.revision,
+                "reason":Template(alert.description).substitute(details)
                 })
 
 
@@ -65,10 +68,14 @@ def send_alerts(env):
 #            "from":"alert_email_listener"
 #        })
         #poor souls that signed up for emails
-        listeners=db.query("SELECT email FROM alert_mail_listeners")
+        listeners=db.query("SELECT email FROM alert_listeners")
         listeners = [x["email"] for x in listeners]
         listeners = ";".join(listeners)
 
+        if len(body)>8000:
+            D.println("Truncated the email body")
+            body=body[0:8000]    #keep it reasonable
+        
         db.call("email_send", (
             listeners, #to
             "Bad news from tests", #title
@@ -79,8 +86,8 @@ def send_alerts(env):
         #I HOPE I CAN SEND ARRAYS OF NUMBERS
         if len(newAlerts)>0:
             db.execute(
-                "UPDATE alert_email SET last_sent=${time} WHERE id IN ${sendList}",
-                {"time":datetime.utcnow(), "sendList":newAlerts}
+                "UPDATE alert_mail SET last_sent=${time} WHERE id IN ${sendList}",
+                {"time":datetime.utcnow(), "sendList":[a["alert_id"] for a in newAlerts]}
             )
 
         db.commit()

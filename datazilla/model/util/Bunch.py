@@ -12,4 +12,11 @@ class Bunch(dict):
        dict.__init__(self, map)
        self.__dict__ = self
 
+    def __str__(self):
+        return dict.__str__(self)
+
+    def __getattr__(self, item):
+        if item not in self: return None
+        return self[item]
+
 

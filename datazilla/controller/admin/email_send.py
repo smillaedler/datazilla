@@ -7,30 +7,33 @@ import smtplib
 import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from model.utils import getDatabaseConnection, error, nvl
-import settings
+
+from datazilla.model.util.debug import D
+from datazilla.model.utils import nvl, datazilla
 
 
 #if there are emails, then send them
-def send_mails(env):
+def email_send(env):
     assert env.db is not None
 
     db = env.db
+    db.debug=env.debug
 
     ##VERIFY self SHOULD BE THE ONE PERFORMING OPS (TO PREVENT MULTIPLE INSTANCES NEEDLESSLY RUNNING)
     db.begin()
 
     try:
 
-        ## TEST IF ANY MAILS TO SEND
-        hasMail = db.query("SELECT max(new_mail) FROM email.notify")
+        ## EXIT EARLY IF THERE ARE NO EMAILS TO SEND
+        hasMail = db.query("SELECT max(new_mail) new_mail FROM email_notify")
         if hasMail[0]["new_mail"]==0:
             return
 
         ## GET LIST OF MAILS TO SEND
         emails = db.query("""
             SELECT
-                d.deliver_to to,
+                c.id,
+                group_concat(d.deliver_to SEPARATOR ',') `to`,
                 c.subject,
                 c.body
             FROM
@@ -39,25 +42,34 @@ def send_mails(env):
                 email_delivery d ON d.content=c.id
             WHERE
                 c.date_sent IS NULL
+            GROUP BY
+                c.id
+
             """)
 
         ## SEND MAILS
+        notDone=0   ##SET TO ONE IF THERE ARE MAIL FAILURES, AND THERE ARE MAILS STILL LEFT TO SEND
         for email in emails:
-            sendemail(
-                from_addr=settings.DATAZILLA_EMAIL_FROM,
-                to_addrs=email.to,
-                subject=email.subject,
-                text_data=None,
-                html_data=email.body,
-                server=settings.DATAZILLA_EMAIL_HOST,
-                port=nvl(settings.DATAZILLA_EMAIL_PORT, 465),
-                username=settings.DATAZILLA_EMAIL_USER,
-                password=settings.DATAZILLA_EMAIL_PASSWORD,
-                use_ssl=True
-            )
+            try:
+                sendemail(
+                    from_addr=datazilla.settings.EMAIL_FROM,
+                    to_addrs=email.to.split(','),
+                    subject=email.subject,
+                    text_data=None,
+                    html_data=email.body,
+                    server=datazilla.settings.EMAIL_HOST,
+                    port=nvl(datazilla.settings.EMAIL_PORT, 465),
+                    username=datazilla.settings.EMAIL_USER,
+                    password=datazilla.settings.EMAIL_PASSWORD,
+                    use_ssl=True
+                )
 
-        db.execute("UPDATE email_content SET date_sent=%s",datetime.utcnow())
-        db.execute("UPDATE email_notify SET new_mail=0")
+                db.execute("UPDATE email_content SET date_sent=${now} WHERE id=${id}",{"id":email.id, "now":datetime.utcnow()})
+            except Exception, e:
+                D.warning("Problem sending email", e)
+                notDone=1
+
+        db.execute("UPDATE email_notify SET new_mail=${notDone}", {"notDone":notDone})
 
         db.commit()
         db.close()

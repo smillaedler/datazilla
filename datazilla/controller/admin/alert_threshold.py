@@ -1,4 +1,6 @@
 from datetime import timedelta, datetime
+from datazilla.model.util.cnv import CNV
+from datazilla.model.util.db import SQL
 from datazilla.model.util.debug import D
 
 
@@ -14,23 +16,23 @@ from datazilla.model.utils import nvl
 def page_threshold_limit (env):
     assert env.db is not None
     
-    typeName="page_threshold_limit"     #name of the reason in alert_mail_reason
+    typeName="page_threshold_limit"     #name of the reason in alert_reason
+
+    db = env.db
+    db.debug = env.debug
 
     try:
-        db = env.db
-        db.debug = env.debug
-
         #CALCULATE HOW FAR BACK TO LOOK
         db.begin()
-        lasttime = db.execute("SELECT last_run, description FROM alert_mail_reasons WHERE code=${type}", {"type":typeName})[0]
+        lasttime = db.query("SELECT last_run, description FROM alert_reasons WHERE code=${type}", {"type":typeName})[0]
         minDate=lasttime["last_run"]+timedelta(weeks=-4)
 
         #FIND ALL PAGES THAT HAVE LIMITS TO TEST
         #BRING BACK ONES THAT BREAK LIMITS
         #BUT DO NOT ALREADY HAVE AN ALERTS EXISTING
-        pages = db.execute("""
+        pages = db.query("""
             SELECT
-                t.test_run_id,
+                t.id test_series_id,
                 t.n_replicates,
                 t.mean,
                 t.std,
@@ -39,11 +41,11 @@ def page_threshold_limit (env):
                 h.reason,
                 m.id alert_id
             FROM
-                alert_mail_page_thresholds h
+                alert_page_thresholds h
             JOIN
                 test_data_all_dimensions t ON t.page_id=h.page
             LEFT JOIN
-                alert_mail m on m.test_run=t.test_run_id AND m.reason=${type}
+                alert_mail m on m.test_series=t.test_run_id AND m.reason=${type}
             WHERE
                 h.threshold<t.mean AND
                 t.push_date>${minDate} AND
@@ -54,49 +56,56 @@ def page_threshold_limit (env):
 
         #FOR EACH PAGE THAT BREAKS LIMITS
         for page in pages:
-            alert_id = db.execute("SELECT util_newID() id FROM DUAL")[0]["id"]
+            if page.alert_id is not None: break
 
             alert = {
-                "id":nvl(page["alert_id"], alert_id),
+                "id":SQL("util_newID()"),
     	        "status":"new",
                 "create_time":datetime.utcnow(),
                 "last_updated":datetime.utcnow(),
-                "test_run":page["test_run_id"],
+                "test_series":page.test_series_id,
                 "reason":typeName,
-                "details":{"expected":page["threshold"], "actual":page["mean"], "reason":page["reason"]},
-                "severity":page["severity"],
+                "details":CNV.object2JSON({"expected":float(page.threshold), "actual":float(page.mean), "reason":page.reason}),
+                "severity":page.severity,
                 "confidence":1.0  #USING NORMAL DIST ASSUMPTION WE CAN MESS WITH CONFIDENCE EVEN BEFORE THRESHOLD IS HIT!
             }
 
-            if page["mail_id"] is None:
-                db.insert("alert_mail", alert)
-            else:
-                db.update("alert_mail", alert)
+            db.insert("alert_mail", alert)
+
+        for page in pages:
+            if page.alert_id is None: break
+            db.update("alert_mail", None)  #ERROR FOR NOW
 
 
         #OBSOLETE THE ALERTS THAT SHOULD NO LONGER GET SENT
-        db.execute("""
-            UPDATE alert_mail SET status='obsolete' WHERE id IN (
-                SELECT
-                    m.id
-                FROM
-                    alert_mail m
-                JOIN
-                    test_all_dimensions t ON m.test_run=t.test_run_id
-                JOIN
-                    alert_mail_page_thresholds h on t.page_id=h.page_id
-                WHERE
-                    m.reason=%{reason}s AND
-                    h.threshold>=t.mean AND
-                    t.push_date>%{time}s
-            )""",
+        obsolete = db.query("""
+            SELECT
+                m.id
+            FROM
+                alert_mail m
+            JOIN
+                test_data_all_dimensions t ON m.test_series=t.test_run_id
+            JOIN
+                alert_page_thresholds h on t.page_id=h.page
+            WHERE
+                m.reason=${reason} AND
+                h.threshold>=t.mean AND
+                t.push_date>${time}
+            """,
             {
                 "reason":typeName,
-                "time":minDate.toUnixTime()
+                "time":minDate
             }
         )
+        obsolete = [o["id"] for o in obsolete]
 
+        if len(obsolete)>0: db.execute("UPDATE alert_mail SET status='obsolete' WHERE id IN (${list}", {"list":obsolete})
+
+        db.commit()
+        db.close()
     except Exception, e:
+        db.rollback()
+        db.close()
         D.error("Could not perform threshold comparisons", e)
 
 

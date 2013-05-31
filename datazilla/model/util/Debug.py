@@ -5,13 +5,14 @@
 #####
 
 
+#from string import Template
 from string import Template
 import sys
 
 #for debugging (do I even want an object in Python? - at least these methods
 # are easily searchable, keep it for now)
 import traceback
-from datazilla.model.utils import indent
+from datazilla.model.util.strings import indent
 
 class D(object):
 

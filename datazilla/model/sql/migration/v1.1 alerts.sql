@@ -1,6 +1,36 @@
 
 DELIMITER ;;
 
+
+
+
+CREATE TABLE IF NOT EXISTS util_uid_next(
+	id 		BIGINT
+);;
+
+DROP FUNCTION IF EXISTS util_newID;;
+CREATE FUNCTION util_newID () 
+	RETURNS BIGINT
+	READS SQL DATA
+BEGIN
+	IF @util_curr_id IS NULL THEN
+		SELECT max(id) INTO @util_curr_id FROM util_uid_next;
+		IF @util_curr_id IS NULL THEN 
+			INSERT INTO util_uid_next VALUES (0);
+			SET @util_curr_id=0;
+		END IF;		
+		UPDATE util_uid_next SET id=@util_curr_id+1000;
+	ELSEIF @util_curr_id%1000=0 THEN
+		SELECT max(id) INTO @util_curr_id FROM util_uid_next;
+		UPDATE util_uid_next SET id=@util_curr_id+1000;
+	END IF;
+	
+	SET @util_curr_id=@util_curr_id+1;
+	RETURN @util_curr_id-1;
+END;;
+
+
+
 DROP PROCEDURE IF EXISTS exec;;
 CREATE PROCEDURE exec(
 	sqltext		VARCHAR(8000),
@@ -71,39 +101,39 @@ m11: BEGIN
 	
 	
 	DROP TABLE IF EXISTS alert_mail;
-	DROP TABLE IF EXISTS alert_mail_reasons;
-	DROP TABLE IF EXISTS alert_mail_stati;
-	DROP TABLE IF EXISTS alert_mail_listeners;
-	DROP TABLE IF EXISTS alert_mail_page_thresholds;
+	DROP TABLE IF EXISTS alert_reasons;
+	DROP TABLE IF EXISTS alert_stati;
+	DROP TABLE IF EXISTS alert_listeners;
+	DROP TABLE IF EXISTS alert_page_thresholds;
 	
-	CREATE TABLE alert_mail_stati(
+	CREATE TABLE alert_stati(
 		code			VARCHAR(10) NOT NULL PRIMARY KEY
 	);
-	INSERT INTO alert_mail_stati VALUES ('new');
-	INSERT INTO alert_mail_stati VALUES ('obsolete');	##MAYBE THIS IS USEFUL
+	INSERT INTO alert_stati VALUES ('new');
+	INSERT INTO alert_stati VALUES ('obsolete');	##MAYBE THIS IS USEFUL
 
 
-	CREATE TABLE alert_mail_reasons (
+	CREATE TABLE alert_reasons (
 		code			VARCHAR(80) NOT NULL PRIMARY KEY,
 		description		VARCHAR(2000), ##MORE DETAILS ABOUT WHAT THIS IS
 		last_run		DATETIME NOT NULL,
 		config			VARCHAR(8000)
 	);
-	INSERT INTO alert_mail_reasons VALUES (
+	INSERT INTO alert_reasons VALUES (
 		'page_threshold_limit', 
-		concat('The page has performed badly (',ascii(36),'{expected}), ',ascii(36),'{actual} or less was expected'),
+		concat('The page has performed badly (',char(36),'{actual}), ',char(36),'{expected} or less was expected'),
 		date_add(now(), INTERVAL -30 DAY),
 		null
 	);		
-	INSERT INTO alert_mail_reasons VALUES (
+	INSERT INTO alert_reasons VALUES (
 		'exception_point', 
-		concat('The test has performed worse then usual by ',ascii(36),'{amount} standard deviations (',ascii(36),'{confidence})'),
+		concat('The test has performed worse then usual by ',char(36),'{amount} standard deviations (',char(36),'{confidence})'),
 		date_add(now(), INTERVAL -30 DAY),
 		'{"minOffset":0.999}'
 	);		
 
 
-	CREATE TABLE alert_mail_page_thresholds (
+	CREATE TABLE alert_page_thresholds (
 		id				INTEGER NOT NULL PRIMARY KEY,
 		page			INTEGER NOT NULL,
 		threshold		DECIMAL(20, 10) NOT NULL,
@@ -114,7 +144,7 @@ m11: BEGIN
 		FOREIGN KEY (page) REFERENCES pages(id) 
 	);
 	
-	INSERT INTO alert_mail_page_thresholds
+	INSERT INTO alert_page_thresholds
 	SELECT
 		util_newID(),
 		p.id,
@@ -130,11 +160,13 @@ m11: BEGIN
 	;
 	
 
-	CREATE TABLE alert_mail_listeners (
+	CREATE TABLE alert_listeners (
 		email			VARCHAR(200) NOT NULL PRIMARY KEY
 	);
-	INSERT INTO alert_mail_listeners VALUES ('klahnakoski@mozilla.com');
+	INSERT INTO alert_listeners VALUES ('klahnakoski@mozilla.com');
 
+
+	#ALTER TABLE test_data_all_dimensions ADD UNIQUE INDEX tdad_id(id)
 	
 	CREATE TABLE alert_mail (
 		id 				INTEGER NOT NULL PRIMARY KEY,
@@ -142,16 +174,16 @@ m11: BEGIN
 		create_time		DATETIME NOT NULL,		##WHEN THIS ISSUE WAS FIRST IDENTIFIED
 		last_updated	DATETIME NOT NULL, 	##WHEN THIS ISSUE WAS LAST UPDATED WITH NEW INFO
 		last_sent		DATETIME,			##WHEN THIS ISSUE WAS LAST SENT TO EMAIL
-		test_run		INTEGER NOT NULL, 	##REFERENCE THE TEST 
+		test_series		INTEGER NOT NULL, 	##REFERENCE THE SMALLEST TESTING OBJECT (AT THIS TIME)
 		reason			VARCHAR(20) NOT NULL,  ##REFERNCE TO STANDARD SET OF REASONS
 		details			VARCHAR(2000) NOT NULL, ##JSON OF SPECIFIC DETAILS
 		severity		DOUBLE NOT NULL,		##ABSTRACT SEVERITY 1.0==HIGH, 0.0==LOW
 		confidence		DOUBLE NOT NULL,		##CONFIDENCE INTERVAL 1.0==100% CONFIDENCE
 		solution		VARCHAR(40), ##INTENT FOR HUMANS TO MARKUP THIS ALERT SO MACHINE KNOWS IF REAL, OR START ESCALATING
-		INDEX alert_lookup (test_run),
-		FOREIGN KEY alert_mail_test_run (test_run) REFERENCES test_run(id),
-		FOREIGN KEY alert_mail_status (status) REFERENCES alert_mail_stati(code),
-		FOREIGN KEY alert_mail_reason (reason) REFERENCES alert_mail_reasons(code)
+		INDEX alert_lookup (test_series),
+		#FOREIGN KEY alert_test_series (test_series) REFERENCES test_data_all_dimensions(id),
+		FOREIGN KEY alert_status (status) REFERENCES alert_stati(code),
+		FOREIGN KEY alert_reason (reason) REFERENCES alert_reasons(code)
 	);
 	
 	UPDATE `version` SET id='1.1';

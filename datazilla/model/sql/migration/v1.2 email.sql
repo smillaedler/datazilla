@@ -2,41 +2,13 @@ DELIMITER ;;
 
 
 
-CREATE TABLE IF NOT EXISTS util_uid_next(
-	id 		BIGINT
-);;
-
-DROP FUNCTION IF EXISTS util_newID;;
-CREATE FUNCTION util_newID () 
-	RETURNS BIGINT
-	READS SQL DATA
-BEGIN
-	IF @util_curr_id IS NULL THEN
-		SELECT max(id) INTO @util_curr_id FROM util_uid_next;
-		IF @util_curr_id IS NULL THEN 
-			INSERT INTO util_uid_next VALUES (0);
-			SET @util_curr_id=0;
-		END IF;		
-		UPDATE util_uid_next SET id=@util_curr_id+1000;
-	ELSEIF @util_curr_id%1000=0 THEN
-		SELECT max(id) INTO @util_curr_id FROM util_uid_next;
-		UPDATE util_uid_next SET id=@util_curr_id+1000;
-	END IF;
-	
-	SET @util_curr_id=@util_curr_id+1;
-	RETURN @util_curr_id-1;
-END;;
-
-
-
-
 
 
 DROP PROCEDURE IF EXISTS email_send;;
 CREATE PROCEDURE email_send(
 	to_			VARCHAR(8000),##SEMICOLON SEPARATED EMAIL ADDRESSES
 	subject_	VARCHAR(200),
-	body_		VARCHAR(8000),
+	body_		VARCHAR(16000),
 	attachment_	VARCHAR(200)
 ) BEGIN
 	DECLARE contentID INTEGER;
@@ -54,7 +26,7 @@ CREATE PROCEDURE email_send(
 	INSERT INTO email_content (id, subject, date_sent, body) VALUES (
 		contentID,
 		subject_,
-		now(),
+		NULL,
 		body_
 	);
 
@@ -123,7 +95,7 @@ m11: BEGIN
 		id			INTEGER primary key not null,
 		subject		VARCHAR(100),
 		date_sent	DATETIME,
-		body		VARCHAR(8000)
+		body		VARCHAR(16000)
 	);
 
 	CREATE TABLE email_delivery (

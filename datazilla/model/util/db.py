@@ -5,29 +5,25 @@
 #####
 from datetime import datetime
 from string import Template
-import string
 import MySQLdb
-from django.conf import LazySettings
-from datazilla import settings
-from datazilla.model.base import PerformanceTestModel
+from datazilla.model.util.bunch import Bunch
 from datazilla.model.util.debug import D
 
 
 
 
 ## return a database connection
-from datazilla.model.utils import indent
-from datazilla.model.utils import unindent
+from datazilla.model.util.strings import indent
+from datazilla.model.util.strings import outdent
+from datazilla.model.utils import datazilla
 
 def getDatabaseConnection(project, schema):
 
-    settings = LazySettings()
-    
     return Connection(MySQLdb.connect(
-        host=settings.DATAZILLA_DATABASE_HOST,
-        port=int(settings.DATAZILLA_DATABASE_PORT),
-        user=settings.DATAZILLA_DATABASE_USER,
-        passwd=settings.DATAZILLA_DATABASE_PASSWORD,
+        host=datazilla.settings.DATABASE_HOST,
+        port=int(datazilla.settings.DATABASE_PORT),
+        user=datazilla.settings.DATABASE_USER,
+        passwd=datazilla.settings.DATABASE_PASSWORD,
         db=project+"_"+schema+"_1"
     ))
 
@@ -42,6 +38,7 @@ class Connection():
         self.cursor=None
         self.committed=True
         self.debug=DEBUG
+        self.backlog=[]     #accumulate the write commands so they are sent at once
 
     def begin(self):
         if self.cursor is not None:
@@ -56,39 +53,77 @@ class Connection():
         self.cursor=None
 
     def commit(self):
+        self.executeBacklog()
         self.db.commit()
         self.committed=True
 
     def rollback(self):
+        self.backlog=[]     #YAY! FREE!
         self.db.rollback()
         self.committed=True
 
     def call(self, procName, params):
+        self.executeBacklog()
         try:
             self.cursor.callproc(procName, params)
+            self.cursor.close()
+            self.cursor=self.db.cursor()
         except Exception, e:
             D.error("Problem calling procedure "+procName, e)
 
 
 
-    def execute(self, sql, param=None):
-
-        if self.cursor is None: D.error("Expecting transation to be started before issuing queries")
+    def query(self, sql, param=None):
+        self.executeBacklog()
         try:
+            oldCursor=self.cursor
+            if oldCursor is None: #ALLOW NON-TRANSACTIONAL READS
+                self.cursor=self.db.cursor()
+
             if param is not None: sql=Template(sql).substitute(self.quote(param))
-            sql=unindent(sql)
+            sql=outdent(sql)
             if self.debug: D.println("Execute SQL:\n"+indent(sql))
+
             self.cursor.execute(sql)
 
             result = []
             columns = tuple( [d[0].decode('utf8') for d in self.cursor.description] )
             for row in self.cursor:
-                result.append(dict(zip(columns, row)))
+                result.append(Bunch(zip(columns, row)))
+
+            if oldCursor is None:   #CLEANUP AFTER NON-TRANSACTIONAL READS
+                self.cursor.close()
+                self.cursor=None
+
             return result
         except Exception, e:
             D.error("Problem executing SQL:\n"+indent(sql.strip()), e, offset=1)
 
-        
+
+    def execute(self, sql, param=None):
+        if self.cursor is None: D.error("Expecting transation to be started before issuing queries")
+
+        if param is not None: sql=Template(sql).substitute(self.quote(param))
+        sql=outdent(sql)
+        self.backlog.append(sql)
+
+
+
+    def executeBacklog(self):
+        if len(self.backlog)==0: return
+
+        sql=";\n".join(self.backlog)
+        try:
+            if self.debug: D.println("Execute block of SQL:\n"+indent(sql))
+            self.cursor.execute(sql)
+            self.cursor.close()
+            self.cursor = self.db.cursor()
+        except Exception, e:
+            D.error("Problem executing SQL:\n"+indent(sql.strip()), e, offset=1)
+
+        self.backlog=[]
+
+
     ## Insert dictionary of values into table
     def insert (self, tableName, param):
         def quote(value):
@@ -103,27 +138,30 @@ class Connection():
                   ",".join([param[k] for k in keys])+\
                   ")"
 
-        self.cursor.execute(command)
+        self.execute(command)
 
 
     def quote(self, param):
         try:
-            keys = param.keys()
-            values = [param[k] for k in keys]
-
             output={}
-            for i in [0,len(keys)-1]:
-                v=values[i]
+            for k, v in [(k, param[k]) for k in param.keys()]:
                 if isinstance(v, datetime):
-                    v="str_to_date('"+v.strftime("%Y%m%d%H%M%S")+"', '%Y%m%d%H%i%s')"
+                    v=SQL("str_to_date('"+v.strftime("%Y%m%d%H%M%S")+"', '%Y%m%d%H%i%s')")
                 elif isinstance(v, list):
-                    v="("+",".join([self.db.literal(vv) for vv in v])+")"
+                    v=SQL("("+",".join([self.db.literal(vv) for vv in v])+")")
+                elif isinstance(v, SQL):
+                    pass      
                 else:
-                    v=self.db.literal(v)
+                    v=SQL(self.db.literal(v))
 
-                output[keys[i]]=v
+                output[k]=v
             return output
         except Exception, e:
             D.error("problem quoting SQL", e)
 
-    
+
+#ACTUAL SQL
+class SQL(str):
+
+    def __init__(self, string=''):
+        str.__init__(self, string)
