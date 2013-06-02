@@ -5,6 +5,7 @@ datazilla/settings/local.py
 docs/_build/
 .DS_Store
 .idea
+.svn
 datazilla.iml
 run_metrics*
 out
