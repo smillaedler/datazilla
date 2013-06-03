@@ -17,8 +17,10 @@ def all_files(
     json=None
     with open(json_file, 'r') as content_file:
         json=content_file.read()
-        json=json.replace("\n", " ").replace("\r", "").replace("\t", "    ") #file is not real json
-        json = CNV.JSON2object(json)
+
+    json = re.sub(r"\"\"\".*?\"\"\"|#.*?\n|\n", r" ", json)  #DERIVED FROM https://github.com/jeads/datasource/blob/master/datasource/bases/BaseHub.py#L58
+    json = re.sub(r"\t", r" ", json)
+    json = CNV.JSON2object(json)
 
     #SCAN ALL PYTHON FILES
     for root, _, files in os.walk(source_dir):
