@@ -1,11 +1,10 @@
 from optparse import make_option
 from random import randint
-from django.conf import LazySettings
 
 from base import ProjectBatchCommand
-from datazilla.model.util.bunch import Bunch
-from datazilla.model.util.db import get_database_connection
-from datazilla.model.util.debug import D
+from datazilla.util.bunch import Bunch
+from datazilla.util.db import get_database_connection
+from datazilla.util.debug import D
 
 
 from datazilla.controller.admin.alert import send_alerts

@@ -100,6 +100,13 @@
       }
  },
  "inserts":{
+
+		"email_update_date":{
+			"sql":"UPDATE alert_mail SET last_sent=? WHERE id IN ?",
+			"host":"master_host"
+		},
+
+
       "set_test_ref_data":{
 
          "sql":"INSERT INTO `test` (`name`, `version`)
@@ -357,9 +364,101 @@
 
         "host":"master_host"
 
-    }
+    },
+
+	"set_threshold_obsolete_alerts":{
+		"sql":"UPDATE alert_mail SET status='obsolete' WHERE id IN (REP0)",
+		"host":"master_host"
+	}
+
+
   },
   "selects":{
+
+		"email_from_alert_listeners":{
+			"sql":"SELECT email FROM alert_listeners",
+			"host":"master_host"
+		},
+
+		"get_threshold_alert_reasons":{
+			"sql":"SELECT last_run, description FROM alert_reasons WHERE code=?",
+			"host":"master_host"
+		},
+
+		"get_threshhold_new_alerts":{
+			"sql":"
+                SELECT
+                    t.id test_series_id,
+                    t.n_replicates,
+                    t.mean,
+                    t.std,
+                    h.threshold,
+                    h.severity,
+                    h.reason,
+                    m.id alert_id
+                FROM
+                    alert_page_thresholds h
+                JOIN
+                    test_data_all_dimensions t ON t.page_id=h.page
+                LEFT JOIN
+                    alert_mail m on m.test_series=t.test_run_id AND m.reason=?
+                WHERE
+                    h.threshold<t.mean AND
+                    t.push_date>? AND
+                    (m.id IS NULL OR m.status='obsolete')
+                ",
+				"host":"master_host"
+			},
+
+		"get_threshold_existing_alerts":{
+			"sql":"
+                SELECT
+                    m.id
+                FROM
+                    alert_mail m
+                JOIN
+                    test_data_all_dimensions t ON m.test_series=t.test_run_id
+                JOIN
+                    alert_page_thresholds h on t.page_id=h.page
+                WHERE
+                    m.reason=? AND
+                    h.threshold>=t.mean AND
+                    t.push_date>?
+                "
+				,
+				"host":"master_host"
+			},
+
+
+		"get_alerts":{
+			"sql":"
+                SELECT
+                    a.id alert_id,
+                    a.reason,
+                    r.description,
+                    a.details,
+                    a.severity,
+                    a.confidence,
+                    t.revision
+                FROM
+                    alert_mail a
+                JOIN
+                    alert_reasons r on r.code=a.reason
+                JOIN
+                    test_data_all_dimensions t ON t.id=a.test_series
+                WHERE
+                    (
+                        a.last_sent IS NULL OR
+                        a.last_sent < a.last_updated OR
+                        a.last_sent < ?
+                    ) AND
+                    a.status <> 'obsolete' AND
+                    bayesian_add(a.severity, a.confidence) > ? AND
+                    a.solution IS NULL
+			",
+		"host":"master_host"
+	},
+
 
       "get_application_log":{
         "sql":"SELECT `revision`,

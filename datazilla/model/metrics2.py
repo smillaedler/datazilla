@@ -1,13 +1,13 @@
-
+import datetime
 from datazilla.model.metrics import MetricsTestModel
-from datazilla.model.util.db import SQL
-from datazilla.model.util.debug import D
+from datazilla.util.db import SQL
+from datazilla.util.debug import D
 
-class MetricsTestModel2(MetricsTestModel):
+class DataSource(MetricsTestModel):
 #inherit MetricsTestModel to add convenience methods
 
-    def __init__(self):
-        MetricsTestModel.__init__(self)
+    def __init__(self, project):
+        MetricsTestModel.__init__(self, project=project)
         self.execute_backlog=[]         #batch the inserts and updates to minimize db calls
         self.backlog_type=None          #used to track which piece of json is being used for the backlog
         self.committed=True
@@ -90,6 +90,31 @@ class MetricsTestModel2(MetricsTestModel):
             )
 
 
+    def insert_json(self, table_name, param):
+        def quote(value):
+            return "`"+value+"`"    #MY SQL QUOTE OF COLUMN NAMES
+
+        keys = param.keys()
+        param = self._quote(param)
+
+        command = "INSERT INTO "+quote(table_name)+"("+\
+                  ",".join([quote(k) for k in keys])+\
+                  ") VALUES ("+\
+                  ",".join([param[k] for k in keys])+\
+                  ")"
+
+        return self.db.execute(
+            sql=command,
+            debug_show=self.DEBUG,
+            refs=refs,
+            placeholders=values,
+            nocommit=True,
+            return_type='tuple'
+            )
+
+
+
+
     def rollback(self):
         self.backlog=[]     #YAY! FREE!
         self.db.rollback()
@@ -99,3 +124,27 @@ class MetricsTestModel2(MetricsTestModel):
         self._execute_json_backlog()
         self.db.commit()
         self.committe=True
+
+    def close(self):
+        if not self.committed: D.error("Please commit, or rollback, before closing")
+
+
+    #convert values to mysql code for the same
+    #mostly delegate directly to the mysql lib, but some exceptions exist
+    def _quote(self, param):
+        try:
+            output={}
+            for k, v in [(k, param[k]) for k in param.keys()]:
+                if isinstance(v, datetime):
+                    v=SQL("str_to_date('"+v.strftime("%Y%m%d%H%M%S")+"', '%Y%m%d%H%i%s')")
+                elif isinstance(v, list):
+                    v=SQL("("+",".join([self.db.literal(vv) for vv in v])+")")
+                elif isinstance(v, SQL):
+                    pass
+                else:
+                    v=SQL(self.db.literal(v))
+
+                output[k]=v
+            return output
+        except Exception, e:
+            D.error("problem quoting SQL", e)

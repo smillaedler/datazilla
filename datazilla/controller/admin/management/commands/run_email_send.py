@@ -3,9 +3,9 @@ from random import randint
 
 from base import ProjectBatchCommand
 from datazilla.controller.admin.email_send import email_send
-from datazilla.model.util.bunch import Bunch
-from datazilla.model.util.db import get_database_connection
-from datazilla.model.util.debug import D
+from datazilla.util.bunch import Bunch
+from datazilla.util.db import get_database_connection
+from datazilla.util.debug import D
 from datazilla.model.utils import datazilla
 
 

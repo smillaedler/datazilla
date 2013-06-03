@@ -6,15 +6,15 @@
 from datetime import datetime
 from string import Template
 import MySQLdb
-from datazilla.model.util.bunch import Bunch
-from datazilla.model.util.debug import D
+from datazilla.util.bunch import Bunch
+from datazilla.util.debug import D
 
 
 
 
 ## return a database connection
-from datazilla.model.util.strings import indent
-from datazilla.model.util.strings import outdent
+from datazilla.util.strings import indent
+from datazilla.util.strings import outdent
 from datazilla.model.utils import datazilla
 
 def get_database_connection(project, schema):
