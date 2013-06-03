@@ -8,7 +8,7 @@
 
 class Bunch(dict):
 
-    def __init__(self, map):
+    def __init__(self, **map):
        dict.__init__(self, map)
        self.__dict__ = self
 

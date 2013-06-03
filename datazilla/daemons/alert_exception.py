@@ -1,32 +1,34 @@
 from datetime import timedelta, datetime
-from itertools import groupby
-from model.utils import get_database_connection, error, nvl
-
-
-##find single points that deviate from the trend
 from numpy.lib.scimath import power, sqrt
 from scipy.stats.distributions import t
 from datazilla.util.bunch import Bunch
+from datazilla.util.db import SQL
+from datazilla.util.query import Q
 from datazilla.util.stats import Moments, stats2moments, Stats, moments2stats
 
 
 
 SEVERITY = 0.9
-CONFIDENCE_TREASHOLD = 0.05
+CONFIDENCE_THRESHOLD = 0.05
+TYPE_NAME="exception_point"     #name of the reason in alert_reason
+LOOK_BACK=timedelta(weeks=4)
 
 def exception_point (env):
+##find single points that deviate from the trend
+
     assert env.db is not None
 
     db=env.db
 
     #LOAD CONFIG
+    start_time=datetime.utcnow()-LOOK_BACK
 
     #CALCULATE HOW FAR BACK TO LOOK
     #BRING IN ALL NEEDED DATA
 
     test_results=db.query("""
         SELECT
-            id,
+            id test_series,
             test_run_id,
             page_id,
             date_received,
@@ -36,13 +38,13 @@ def exception_point (env):
         FROM
             test_data_all_dimensions t
         WHERE
-            date_received>unix_timestamp(${begin_time})
+            coalesce(push_date, date_received)>unix_timestamp(${begin_time})
         ORDER BY
             test_run_id,
             page_id,
             coalesce(push_date, date_received)
         """,
-        {"begin_time":datetime.utcnow()}
+        {"begin_time":start_time}
     )
 
     alerts=[]   #PUT ALL THE EXCEPTION ITEM HERE
@@ -53,12 +55,15 @@ def exception_point (env):
         if len(values)<=1: continue     #CAN DO NOTHING WITH THIS ONE SAMPLE
         for v in values:
             s=Stats(count=v.count, mean=v.mean, std=v.std)
-            if count>0:
+            if count==0:
+                v.status="unknown"
+            else:
                 #SEE HOW MUCH THE CURRENT STATS DEVIATES FROM total
                 p=welchs_ttest(s, moments2stats(total, unbiased=True))
-                v["severity"]=SEVERITY,
-                v["confidence"]=1-p
-                if p<CONFIDENCE_TREASHOLD: alerts.append(v)
+                v.severity=SEVERITY,
+                v.confidence=1-p
+                v.status="known"
+                if p<CONFIDENCE_THRESHOLD: alerts.append(v)
             #accumulate v
             m=stats2moments(s)
             v.m=m
@@ -67,30 +72,49 @@ def exception_point (env):
             count+=1
 
 
-    #CHECK IF ALREADY AN ALERT
+    #CHECK THE CURRENT ALERTS
     current_alerts=db.query("""
         SELECT
             a.id,
+            a.test_series,
             a.status,
             a.last_updated,
-
+            a.severity,
+            a.confidence
         FROM
-            alert_email a
+            alert_mail a
         WHERE
-            test_series in (${list}) AND
-            reason=${}
-
-        """,
-        {""}
+        WHERE
+            coalesce(push_date, date_received)>unix_timestamp(${begin_time}) AND
+            reason=${type} 
+        """, {
+            "begin_time":start_time,
+            "list":[a.test_series for a in alerts],
+            "type":TYPE_NAME
+        }
     )
 
+    lookup_alert=dict([(a.test_series, a) for a in alerts])
+    lookup_current=dict([(c.test_series, c) for c in current_alerts])
 
 
-        #IF SO, UPDATE
-        #IF NOT, ADD
-    pass
+    for a in alerts:
+        #CHECK IF ALREADY AN ALERT
+        if a.test_series in lookup_current:
+            c=lookup_current[a.test_series]
+            if round(a.severity, 3)!=round(c.severity, 3) or round(a.confidence, 3)!=round(c.confidence, 3):
+                a.last_updated=datetime.utcnow()
+                db.update("alert_mail", {"id":a.id}, a)
+        else:
+            a.id=SQL("util_newid()")
+            a.last_updated=datetime.utcnow()
+            db.add("alert_mail", a)
 
-
+    for c in current_alerts:
+        if c.test_series not in lookup_alert:
+            c.status="obsolete"
+            c.last_updated=datetime.utcnow()
+            db.update("alert_mail", {"id":c.id}, c)
 
 
 
