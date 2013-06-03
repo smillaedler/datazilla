@@ -3,9 +3,9 @@ from random import randint
 from django.conf import LazySettings
 
 from base import ProjectBatchCommand
-from datazilla.model.util.bunch import Bunch
-from datazilla.model.util.db import get_database_connection
-from datazilla.model.util.debug import D
+from datazilla.model.bunch import Bunch
+from datazilla.model.db import get_database_connection
+from datazilla.model.debug import D
 
 
 from datazilla.controller.admin.alert import send_alerts

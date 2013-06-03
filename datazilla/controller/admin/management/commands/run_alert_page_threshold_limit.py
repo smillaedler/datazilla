@@ -4,9 +4,9 @@ from random import randint
 
 from base import ProjectBatchCommand
 from datazilla.controller.admin.alert_threshold import page_threshold_limit
-from datazilla.model.util.bunch import Bunch
-from datazilla.model.util.db import get_database_connection
-from datazilla.model.util.debug import D
+from datazilla.model.bunch import Bunch
+from datazilla.model.db import get_database_connection
+from datazilla.model.debug import D
 from datazilla.model.utils import datazilla
 
 

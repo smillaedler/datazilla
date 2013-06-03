@@ -11,7 +11,7 @@ import time
 import datetime
 import sys
 from django.conf import LazySettings
-from datazilla.model.util.bunch import Bunch
+from datazilla.model.bunch import Bunch
 
 def is_number(s):
     try:
