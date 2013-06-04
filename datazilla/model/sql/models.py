@@ -345,7 +345,7 @@ class DataSource(models.Model):
                 # @@@ shouldn't have to specify this here and below
                 "hub": "MySQL",
                 "master_host": {
-                    "host": self.host,
+                    "host": settings.DATAZILLA_DATABASE_HOST,
                     "user": settings.DATAZILLA_DATABASE_USER,
                     "passwd": settings.DATAZILLA_DATABASE_PASSWORD,
                     },
@@ -359,7 +359,7 @@ class DataSource(models.Model):
 
         if self.read_only_host:
             data_source[self.key]['read_host'] = {
-                "host": self.read_only_host,
+                "host": settings.DATAZILLA_RO_DATABASE_HOST,
                 "user": settings.DATAZILLA_RO_DATABASE_USER,
                 "passwd": settings.DATAZILLA_RO_DATABASE_PASSWORD,
                 }

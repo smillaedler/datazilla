@@ -1,4 +1,5 @@
 import datetime
+from datasource.bases.RDBSHub import RDBSHubExecuteError
 from datazilla.model.metrics import MetricsTestModel
 from datazilla.util.db import SQL
 from datazilla.util.debug import D
@@ -53,18 +54,25 @@ class DataSource(MetricsTestModel):
             # It is assumed the bits of sql make sense in the overall sql
             refs.append([p[1] for p in b if isinstance(p, SQL)])
             values.append([p[1] for p in b if not isinstance(p, SQL)])
-
-        self.db.execute(
-            proc=self.backlog_type,
-            debug_show=self.DEBUG,
-            refs=refs,
-            placeholders=values,
-            nocommit=True,
-            return_type='tuple',
-            executemany=True
-            )
-
+        try:
+            self.db.execute(
+                proc=self.backlog_type,
+                debug_show=self.DEBUG,
+                refs=refs,
+                placeholders=values,
+                nocommit=True,
+                return_type='tuple',
+                executemany=True
+                )
+        except Exception, e:
+            D.error("Can not execute SQL\n", e)
+        except RDBSHubExecuteError, r:
+            D.error("Can not execute SQL\n"+self._get_sql(self.backlog_type), r)
+            
         self.backlog_type=None
+
+    def _get_sql(self, proc):
+        return Map(self.db.procs[self.db.data_source])[proc]
 
 
     def query_json(self, json, param):

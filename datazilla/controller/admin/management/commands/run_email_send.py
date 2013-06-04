@@ -2,7 +2,7 @@ from optparse import make_option
 from random import randint
 
 from base import ProjectBatchCommand
-from datazilla.controller.admin.email_send import email_send
+from datazilla.daemons.email_send import email_send
 from datazilla.util.bunch import Bunch
 from datazilla.util.db import get_database_connection
 from datazilla.util.debug import D
@@ -21,6 +21,12 @@ class Command(ProjectBatchCommand):
                     dest='debug',
                     default=None,
                     help=('Send stuff to stdout')
+        ),
+        make_option('--settings_file',
+                    action='store',
+                    dest='settings_file',
+                    default=None,
+                    help=('file with connection info, and other config options')
         ),
         )
 
