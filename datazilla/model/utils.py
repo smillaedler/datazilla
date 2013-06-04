@@ -11,7 +11,7 @@ import time
 import datetime
 import sys
 from django.conf import LazySettings
-from datazilla.model.bunch import Bunch
+from datazilla.util.bunch import Bunch
 
 def is_number(s):
     try:
@@ -134,8 +134,8 @@ def nvl(a, b):
 
 ##WHERE DO I PUT THE SETTINGS?
 settings=LazySettings()
-datazilla=Bunch({})
-datazilla.settings=Bunch({})
+datazilla=Bunch()
+datazilla.settings=Bunch()
 debug=False
 for s in dir(settings):
     k=s

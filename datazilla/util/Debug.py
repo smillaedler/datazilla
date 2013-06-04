@@ -12,7 +12,7 @@ import sys
 #for debugging (do I even want an object in Python? - at least these methods
 # are easily searchable, keep it for now)
 import traceback
-from datazilla.model.strings import indent
+from datazilla.util.strings import indent
 
 class D(object):
 

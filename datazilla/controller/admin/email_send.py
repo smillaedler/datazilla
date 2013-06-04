@@ -8,7 +8,7 @@ import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from datazilla.model.debug import D
+from datazilla.util.debug import D
 from datazilla.model.utils import nvl, datazilla
 
 

@@ -3,7 +3,7 @@ import json
 from string import Template
 from datazilla.model.metrics2 import MetricsTestModel2
 from datazilla.model.maths import bayesian_add
-from datazilla.model.debug import D
+from datazilla.util.debug import D
 
 
 ALERT_LIMIT = 0.4 # bayesian_add(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)

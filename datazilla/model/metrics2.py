@@ -1,7 +1,7 @@
 
 from datazilla.model.metrics import MetricsTestModel
-from datazilla.model.db import SQL
-from datazilla.model.debug import D
+from datazilla.util.db import SQL
+from datazilla.util.debug import D
 
 class MetricsTestModel2(MetricsTestModel):
 #inherit MetricsTestModel to add convenience methods

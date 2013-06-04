@@ -1,7 +1,7 @@
 from datetime import timedelta, datetime
-from datazilla.model.cnv import CNV
-from datazilla.model.db import SQL
-from datazilla.model.debug import D
+from datazilla.util.cnv import CNV
+from datazilla.util.db import SQL
+from datazilla.util.debug import D
 
 
 
