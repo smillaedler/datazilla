@@ -2,11 +2,12 @@ from optparse import make_option
 from random import randint
 
 from base import ProjectBatchCommand
-from datazilla.controller.admin.email_send import email_send
-from datazilla.util.bunch import Bunch
+from datazilla.daemons.email_send import email_send
+from datazilla.util.map import Map
+from datazilla.util.cnv import CNV
 from datazilla.util.db import get_database_connection
 from datazilla.util.debug import D
-from datazilla.model.utils import datazilla
+from datazilla.model.utils import nvl
 
 
 class Command(ProjectBatchCommand):
@@ -22,18 +23,28 @@ class Command(ProjectBatchCommand):
                     default=None,
                     help=('Send stuff to stdout')
         ),
+        make_option('--settings_file',
+            action='store',
+            dest='settings_file',
+            default=None,
+            help=('JSON file with settings')
+        ),
         )
 
 
     def handle_project(self, project, **options):
 
+        with open(options["settings_file"]) as f:
+            settings=CNV.JSON2object(f.read())
+
         try:
             D.println("Running email for project ${project}", {"project":project})
 
-            email_send(Bunch({
-                "db":get_database_connection(project, "perftest"),
-                "debug":options.get('debug') or datazilla.settings.DEBUG,
-            }))
+            email_send(Map(
+                db=get_database_connection(settings.database),
+                debug=options.get('debug') or (settings.debug is not None),
+                settings=settings
+            ))
         except Exception, e:
             D.warning("Failure to run alerts", cause=e)
 

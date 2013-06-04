@@ -1,7 +1,6 @@
 from datetime import timedelta, datetime
 from numpy.lib.scimath import power, sqrt
 from scipy.stats.distributions import t
-from datazilla.util.bunch import Bunch
 from datazilla.util.db import SQL
 from datazilla.util.query import Q
 from datazilla.util.stats import Moments, stats2moments, Stats, moments2stats
@@ -15,7 +14,6 @@ LOOK_BACK=timedelta(weeks=4)
 
 def exception_point (env):
 ##find single points that deviate from the trend
-
     assert env.db is not None
 
     db=env.db
@@ -83,7 +81,6 @@ def exception_point (env):
             a.confidence
         FROM
             alert_mail a
-        WHERE
         WHERE
             coalesce(push_date, date_received)>unix_timestamp(${begin_time}) AND
             reason=${type} 

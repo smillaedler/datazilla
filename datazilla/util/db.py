@@ -6,25 +6,23 @@
 from datetime import datetime
 from string import Template
 import MySQLdb
-from datazilla.util.bunch import Bunch
+from datazilla.model.utils import nvl
 from datazilla.util.debug import D
-
+from datazilla.util.map import Map
+from datazilla.util.strings import indent
+from datazilla.util.strings import outdent
 
 
 
 ## return a database connection
-from datazilla.util.strings import indent
-from datazilla.util.strings import outdent
-from datazilla.model.utils import datazilla
-
-def get_database_connection(project, schema):
+def get_database_connection(settings):
 
     return Connection(MySQLdb.connect(
-        host=datazilla.settings.DATABASE_HOST,
-        port=int(datazilla.settings.DATABASE_PORT),
-        user=datazilla.settings.DATABASE_USER,
-        passwd=datazilla.settings.DATABASE_PASSWORD,
-        db=project+"_"+schema+"_1"
+        host=settings.host,
+        port=settings.port,
+        user=nvl(settings.username, settings.user),
+        passwd=nvl(settings.password, settings.passwd),
+        db=nvl(settings.schema, settings.db)
     ))
 
 
@@ -87,7 +85,7 @@ class Connection():
             self.cursor.execute(sql)
 
             columns = tuple( [d[0].decode('utf8') for d in self.cursor.description] )
-            result=[Bunch(zip(columns, row)) for row in self.cursor]
+            result=[Map(**dict(zip(columns, row))) for row in self.cursor]
 
             if old_cursor is None:   #CLEANUP AFTER NON-TRANSACTIONAL READS
                 self.cursor.close()

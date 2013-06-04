@@ -97,7 +97,8 @@ def page_threshold_limit (env):
         )
         obsolete = [o["id"] for o in obsolete]
 
-        if len(obsolete)>0: db.execute("UPDATE alert_mail SET status='obsolete' WHERE id IN (${list}", {"list":obsolete})
+        if len(obsolete)>0:
+            db.execute("UPDATE alert_mail SET status='obsolete' WHERE id IN (${list}", {"list":obsolete})
 
         db.commit()
         db.close()

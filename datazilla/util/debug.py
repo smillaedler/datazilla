@@ -30,7 +30,7 @@ class D(object):
             params=None
 
         if not isinstance(cause, Except):
-            cause=Except(str(cause), trace=format_trace(traceback.extract_tb(sys.exc_info()[2]), 1))
+            cause=Except(str(cause), trace=format_trace(traceback.extract_tb(sys.exc_info()[2]), 0))
 
         e = Except(template, params, cause, format_trace(traceback.extract_stack(), 1))
         D.println(str(e))

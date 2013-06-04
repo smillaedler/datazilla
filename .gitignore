@@ -2,6 +2,7 @@
 *.swp
 htmlcov/
 datazilla/settings/local.py
+datazilla/settings/settings.json
 docs/_build/
 .DS_Store
 .idea

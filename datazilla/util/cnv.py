@@ -7,6 +7,7 @@
 
 #DUE TO MY POOR MEMORY, THIS IS A LIST OF ALL CONVERSION ROUTINES
 import json
+from datazilla.util.map import Map
 
 class CNV:
 
@@ -15,5 +16,9 @@ class CNV:
         return json.dumps(obj)
 
     @staticmethod
-    def JSON2object(json):
-        return json.loads(json)
+    def JSON2object(json_string):
+        return Map(**json.loads(json_string))
+
+
+
+

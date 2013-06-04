@@ -7,17 +7,20 @@ import smtplib
 import sys
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-
+from datazilla.model.utils import nvl
 from datazilla.util.debug import D
-from datazilla.model.utils import nvl, datazilla
 
 
 #if there are emails, then send them
+from datazilla.util.map import Map
+
 def email_send(env):
-    assert env.db is not None
+    assert env.db is not None               #EXPECTING db WITH EMAIL SCHEMA
+    assert env.settings.email is not None   #EXPECTING SMTP CONNECTION INFO
 
     db = env.db
     db.debug=env.debug
+
 
     ##VERIFY self SHOULD BE THE ONE PERFORMING OPS (TO PREVENT MULTIPLE INSTANCES NEEDLESSLY RUNNING)
     db.begin()
@@ -27,6 +30,7 @@ def email_send(env):
         ## EXIT EARLY IF THERE ARE NO EMAILS TO SEND
         has_mail = db.query("SELECT max(new_mail) new_mail FROM email_notify")
         if has_mail[0]["new_mail"]==0:
+            D.println("No emails to send")
             return
 
         ## GET LIST OF MAILS TO SEND
@@ -49,28 +53,25 @@ def email_send(env):
 
         ## SEND MAILS
         not_done=0   ##SET TO ONE IF THERE ARE MAIL FAILURES, AND THERE ARE MAILS STILL LEFT TO SEND
+        num_done=0
         for email in emails:
             try:
                 sendemail(
-                    from_addr=datazilla.settings.EMAIL_FROM,
                     to_addrs=email.to.split(','),
                     subject=email.subject,
-                    text_data=None,
                     html_data=email.body,
-                    server=datazilla.settings.EMAIL_HOST,
-                    port=nvl(datazilla.settings.EMAIL_PORT, 465),
-                    username=datazilla.settings.EMAIL_USER,
-                    password=datazilla.settings.EMAIL_PASSWORD,
-                    use_ssl=True
+                    settings=env.settings.email
                 )
 
                 db.execute("UPDATE email_content SET date_sent=${now} WHERE id=${id}",{"id":email.id, "now":datetime.utcnow()})
+                num_done+=len(email.to.split(','))
             except Exception, e:
                 D.warning("Problem sending email", e)
                 not_done=1
 
         db.execute("UPDATE email_notify SET new_mail=${not_done}", {"not_done":not_done})
 
+        D.println(str(num_done)+" emails have been sent")
         db.commit()
         db.close()
     except Exception, e:
@@ -104,16 +105,16 @@ if sys.hexversion < 0x020603f0:
 
 
 def sendemail(
-    from_addr=None,
+    from_address=None,
     to_addrs=None,
     subject='No Subject',
     text_data=None,
     html_data=None,
-    server='mail.mozilla.com',
-    port=465,
-    username=None,
-    password=None,
-    use_ssl=True
+#    server='mail.mozilla.com',
+#    port=465,
+#    username=None,
+#    password=None,
+    settings=Map()
 ):
     """Sends an email.
 
@@ -127,18 +128,20 @@ def sendemail(
     viewer supports it; otherwise he'll see the text content.
     """
 
-    if not from_addr or not to_addrs:
+    from_address=nvl(from_address, settings.from_address)
+
+    if not from_address or not to_addrs:
         raise Exception("Both from_addr and to_addrs must be specified")
     if not text_data and not html_data:
         raise Exception("Must specify either text_data or html_data")
 
-    if use_ssl:
-        server = smtplib.SMTP_SSL(server, port)
+    if settings.use_ssl:
+        server = smtplib.SMTP_SSL(settings.host, settings.port)
     else:
-        server = smtplib.SMTP(server, port)
+        server = smtplib.SMTP(settings.host, settings.port)
 
-    if username and password:
-        server.login(username, password)
+    if settings.username and settings.password:
+        server.login(settings.username, settings.password)
 
     if not html_data:
         msg = MIMEText(text_data)
@@ -152,9 +155,9 @@ def sendemail(
         msg.attach(MIMEText(html_data, 'html'))
 
     msg['Subject'] = subject
-    msg['From'] = from_addr
+    msg['From'] = from_address
     msg['To'] = ', '.join(to_addrs)
 
-    server.sendmail(from_addr, to_addrs, msg.as_string())
+    server.sendmail(from_address, to_addrs, msg.as_string())
 
     server.quit()
