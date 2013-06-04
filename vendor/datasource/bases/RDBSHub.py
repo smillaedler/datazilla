@@ -647,12 +647,8 @@ class DataIterator:
 class RDBSHubError(DataHubError):
     """Base class for all RDBSHub derived class errors.  Takes an error message and returns string representation in __repr__."""
     def __init__(self, msg):
-        self.msg = msg
-    def __repr__(self):
-        return self.msg
+        DataHubError.__init__(self, msg)
 
 class RDBSHubExecuteError(DataHubError):
     def __init__(self, msg):
-        self.msg = msg
-    def __repr__(self):
-        return self.msg
+        DataHubError.__init__(self, msg)

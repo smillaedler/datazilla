@@ -4,10 +4,8 @@ from random import randint
 
 from base import ProjectBatchCommand
 from datazilla.daemons.alert_threshold import page_threshold_limit
-from datazilla.model.metrics import MetricsTestModel
 from datazilla.model.metrics2 import DataSource
 from datazilla.util.bunch import Bunch
-from datazilla.util.db import get_database_connection
 from datazilla.util.debug import D
 from datazilla.model.utils import datazilla
 

@@ -2,12 +2,13 @@ from optparse import make_option
 from random import randint
 
 from base import ProjectBatchCommand
-from datazilla.util.bunch import Bunch
+from datazilla.model.metrics2 import DataSource
+from datazilla.util.map import Map
 from datazilla.util.db import get_database_connection
 from datazilla.util.debug import D
 
 
-from datazilla.controller.admin.alert import send_alerts
+from datazilla.daemons.alert import send_alerts
 from datazilla.model.utils import datazilla
 
 
@@ -24,6 +25,12 @@ class Command(ProjectBatchCommand):
                     default=None,
                     help=('Send stuff to stdout')
         ),
+        make_option('--settings_file',
+            action='store',
+            dest='settings_file',
+            default=None,
+            help=('file with connection info, and other config options')
+        ),
         )
 
 
@@ -32,10 +39,10 @@ class Command(ProjectBatchCommand):
         try:
             D.println("Running alert for project ${project}", {"project":project})
 
-            send_alerts(Bunch({
-                "db":get_database_connection(project, "perftest"),
-                "debug":options.get('debug') or datazilla.settings.DEBUG,
-            }))
+            send_alerts(Map(
+                db=DataSource(project=project),
+                debug=options.get('debug') or datazilla.settings.DEBUG
+            ))
         except Exception, e:
             D.warning("Failure to run alerts", cause=e)
 

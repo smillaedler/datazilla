@@ -51,7 +51,7 @@ def page_threshold_limit (env):
             "perftest.selects.get_threshhold_new_alerts",
             [
                 ("type",type_name),
-                ("min_date",min_date)
+                ("min_date",CNV.datetime2unix(min_date))
             ]
         )
 
@@ -75,7 +75,7 @@ def page_threshold_limit (env):
 
         for page in pages:
             if page.alert_id is None: break
-            db.update("alert_mail", None)  #ERROR FOR NOW
+            db.update("alert_mail", {"id":page.alert_id}, page)
 
 
         #OBSOLETE THE ALERTS THAT SHOULD NO LONGER GET SENT
@@ -96,7 +96,7 @@ def page_threshold_limit (env):
             "perftest.selects.get_threshold_existing_alerts",
             [
                 ("reason",type_name),
-                ("time",min_date)
+                ("time",CNV.datetime2unix(min_date))
             ]
         )
         obsolete = SQL(",".join([o["id"] for o in obsolete]))

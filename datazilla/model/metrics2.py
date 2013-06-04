@@ -1,8 +1,9 @@
 import datetime
 from datasource.bases.RDBSHub import RDBSHubExecuteError
 from datazilla.model.metrics import MetricsTestModel
-from datazilla.util.db import SQL
+from datazilla.util.db import SQL, Connection
 from datazilla.util.debug import D
+from datazilla.util.map import Map
 
 class DataSource(MetricsTestModel):
 #inherit MetricsTestModel to add convenience methods
@@ -25,7 +26,10 @@ class DataSource(MetricsTestModel):
         self.committed=False
 
 
-    def execute_json(self, json, param):
+    def execute_json(self,
+                   json, #name of SQL template
+                   param #ordered list of (name,value) tuples
+    ):
         if self.committed: D.error("Must open a transaction first")
         # param is an ordered list of (name, value) tuples.
         # the names are ignored, for now
@@ -42,40 +46,22 @@ class DataSource(MetricsTestModel):
 
 
 
-    def _execute_json_backlog(self):
-    # private method to flush the backlog of update queries
-    # executemany=True changes the refs and placeholders parameters to be lists
-    # of parameters, instead of just parameters
-        refs=[]
-        values=[]
 
-        for b in self.execute_backlog:
-            # REFs are pure sql bits that should not be quoted.
-            # It is assumed the bits of sql make sense in the overall sql
-            refs.append([p[1] for p in b if isinstance(p, SQL)])
-            values.append([p[1] for p in b if not isinstance(p, SQL)])
-        try:
-            self.db.execute(
-                proc=self.backlog_type,
-                debug_show=self.DEBUG,
-                refs=refs,
-                placeholders=values,
-                nocommit=True,
-                return_type='tuple',
-                executemany=True
-                )
-        except Exception, e:
-            D.error("Can not execute SQL\n", e)
-        except RDBSHubExecuteError, r:
-            D.error("Can not execute SQL\n"+self._get_sql(self.backlog_type), r)
-            
-        self.backlog_type=None
+    def call_json(self, proc_name, param):
+    #make call to database procedure
+        self._execute_json_backlog()
 
-    def _get_sql(self, proc):
-        return Map(self.db.procs[self.db.data_source])[proc]
+        #replace when procedure calling is supported
+        c=Connection(self._get_sql_db())
+        c.begin()
+        c.call(proc_name, param)
+        c.commit()
+        
 
-
-    def query_json(self, json, param):
+    def query_json(self,
+                   json, #name of SQL template
+                   param #ordered list of (name,value) tuples
+    ):
         self._execute_json_backlog()
         
         # param is an ordered list of (name, value) tuples.
@@ -88,71 +74,96 @@ class DataSource(MetricsTestModel):
         refs=[p[1] for p in param if isinstance(p, SQL)]
         values=[p[1] for p in param if not isinstance(p, SQL)]
 
-        return self.db.execute(
-            proc=json,
-            debug_show=self.DEBUG,
-            refs=refs,
-            placeholders=values,
-            nocommit=True,
-            return_type='tuple'
-            )
+        try:
+            results=self.db.execute(
+                proc=json,
+                debug_show=self.DEBUG,
+                replace=refs,
+                placeholders=values,
+                nocommit=True,
+                return_type='tuple'
+                )
+            return [Map(**r) for r in results]
+        except Exception, e:
+            D.error("Can not execute SQL\n"+self._get_sql(json), e)
+        except RDBSHubExecuteError, r:
+            D.error("Can not execute SQL\n"+self._get_sql(json), r)
 
 
+            
     def insert_json(self, table_name, param):
+    #just until we have an insert routine 
         def quote(value):
             return "`"+value+"`"    #MY SQL QUOTE OF COLUMN NAMES
 
         keys = param.keys()
-        param = self._quote(param)
+        param = [(k, v) for k,v in param]
+        name="insert into "+table_name+"("+",".join(keys)+")"
 
-        command = "INSERT INTO "+quote(table_name)+"("+\
+        if not self._get_sql(name):
+            #register new sql into the json
+            sql = "INSERT INTO "+quote(table_name)+"("+\
                   ",".join([quote(k) for k in keys])+\
                   ") VALUES ("+\
-                  ",".join([param[k] for k in keys])+\
+                  ",".join("?")+\
                   ")"
+            self._set_sql(name,sql)
 
-        return self.db.execute(
-            sql=command,
-            debug_show=self.DEBUG,
-            refs=refs,
-            placeholders=values,
-            nocommit=True,
-            return_type='tuple'
-            )
-
+        self.execute_json(name, param)
 
 
 
     def rollback(self):
         self.backlog=[]     #YAY! FREE!
-        self.db.rollback()
+        self.db.rollback(self.db.default_host_type)
         self.committed=True
 
     def commit(self):
         self._execute_json_backlog()
-        self.db.commit()
-        self.committe=True
+        self.db.commit(self.db.default_host_type)
+        self.committed=True
 
     def close(self):
         if not self.committed: D.error("Please commit, or rollback, before closing")
+        self.db.close()
 
 
-    #convert values to mysql code for the same
-    #mostly delegate directly to the mysql lib, but some exceptions exist
-    def _quote(self, param):
-        try:
-            output={}
-            for k, v in [(k, param[k]) for k in param.keys()]:
-                if isinstance(v, datetime):
-                    v=SQL("str_to_date('"+v.strftime("%Y%m%d%H%M%S")+"', '%Y%m%d%H%i%s')")
-                elif isinstance(v, list):
-                    v=SQL("("+",".join([self.db.literal(vv) for vv in v])+")")
-                elif isinstance(v, SQL):
-                    pass
-                else:
-                    v=SQL(self.db.literal(v))
+    def _execute_json_backlog(self):
+    # private method to flush the backlog of update queries
+    # executemany=True changes the refs and placeholders parameters to be lists
+    # of parameters, instead of just parameters
+        refs=[]
+        values=[]
 
-                output[k]=v
-            return output
-        except Exception, e:
-            D.error("problem quoting SQL", e)
+        for b in self.execute_backlog:
+            # REFs are pure sql bits that should not be quoted.
+            # It is assumed the bits of sql make sense in the overall sql
+            refs.append([p[1] for p in b if isinstance(p, SQL)])
+            values.append([p[1] for p in b if not isinstance(p, SQL)])
+            try:
+                self.db.execute(
+                    proc=self.backlog_type,
+                    debug_show=self.DEBUG,
+                    replace=refs,
+                    placeholders=values,
+                    nocommit=True,
+                    return_type='tuple',
+                    executemany=True
+                    )
+            except Exception, e:
+                D.error("Can not execute SQL\n"+self._get_sql(self.backlog_type), e)
+            except RDBSHubExecuteError, r:
+                D.error("Can not execute SQL\n"+self._get_sql(self.backlog_type), r)
+
+        self.backlog_type=None
+
+
+    def _get_sql_db(self):
+    #return the underlying mysql connection object
+        return self.db.connection["master_host"]["con_obj"]
+
+    def _get_sql(self, name):
+        return Map(**self.db.procs[self.db.data_source])[name].sql
+
+    def _set_sql(self, name, sql):
+        self.db.procs[self.db.data_source][name]["sql"]=sql

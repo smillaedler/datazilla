@@ -13,7 +13,7 @@ MAX_EMAIL_LENGTH = 8000
 
 def send_alerts(env):
     if env.db is None or not isinstance(env.db, DataSource):
-        D.error("expecting env.bd to be datazilla.model.Datasource")
+        D.error("expecting env.db to be datazilla.model.Datasource")
     db = env.db
 
     db.begin()

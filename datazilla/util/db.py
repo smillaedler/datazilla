@@ -8,7 +8,7 @@ from string import Template
 import MySQLdb
 from datazilla.util.bunch import Bunch
 from datazilla.util.debug import D
-
+from datazilla.util.map import Map
 
 
 
@@ -87,7 +87,7 @@ class Connection():
             self.cursor.execute(sql)
 
             columns = tuple( [d[0].decode('utf8') for d in self.cursor.description] )
-            result=[Bunch(zip(columns, row)) for row in self.cursor]
+            result=[Map(**dict(zip(columns, row))) for row in self.cursor]
 
             if old_cursor is None:   #CLEANUP AFTER NON-TRANSACTIONAL READS
                 self.cursor.close()

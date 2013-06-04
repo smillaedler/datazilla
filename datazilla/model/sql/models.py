@@ -345,7 +345,7 @@ class DataSource(models.Model):
                 # @@@ shouldn't have to specify this here and below
                 "hub": "MySQL",
                 "master_host": {
-                    "host": settings.DATAZILLA_DATABASE_HOST,
+                    "host": self.host,
                     "user": settings.DATAZILLA_DATABASE_USER,
                     "passwd": settings.DATAZILLA_DATABASE_PASSWORD,
                     },

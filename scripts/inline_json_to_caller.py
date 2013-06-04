@@ -63,11 +63,9 @@ def update_comments(content, json, method_name, project_name):
 
             #the name is an index into the json object
             name=between(v, "\""+project_name+".", "\"")
-            o=json
-            for n in name.split("."): o=o[n]
 
             #beautify the sql
-            sql=o["sql"]
+            sql=json[name].sql
             sql=re.sub(r"((\s){5,})", r"\n\1", sql) #enough spaces means there was a cr, so we put it back in
             sql=indent(outdent(sql), "#                ")
 

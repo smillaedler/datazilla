@@ -343,19 +343,15 @@ class BaseHub:
 """
 Error classes
 """
-class DataHubError:
+class DataHubError (Exception):
     """Base class for all data hub errors.  Takes an error message and returns string representation in __repr__."""
     def __init__(self, msg):
-        self.msg = msg
-    def __repr__(self):
-        return self.msg
+        Exception.__init__(self, msg)
 
 class DataSourceKeyError(DataHubError):
     """Dictionary key error.  Raised when a required key or key value is not defined"""
     def __init__(self, msg):
-        self.msg = msg
-    def __repr__(self):
-        return self.msg
+        DataHubError.__init__(self, msg)
 
 if not BaseHub.data_sources:
     """
