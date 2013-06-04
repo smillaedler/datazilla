@@ -7,6 +7,8 @@
 
 #DUE TO MY POOR MEMORY, THIS IS A LIST OF ALL CONVERSION ROUTINES
 import json
+import time
+import datetime
 from datazilla.util.map import Map
 
 class CNV:
@@ -21,4 +23,10 @@ class CNV:
 
 
 
+    @classmethod
+    def datetime2unix(cls, d):
+        return time.mktime(d.timetuple())
 
+    @classmethod
+    def unix2datetime(cls, u):
+        return datetime.datetime.fromtimestamp(u)
