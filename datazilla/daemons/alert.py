@@ -1,8 +1,7 @@
 from datetime import datetime, timedelta
 import json
 from string import Template
-from datazilla.model.metrics2 import MetricsTestModel2
-from datazilla.model.maths import bayesian_add
+from datazilla.util.maths import bayesian_add
 from datazilla.util.debug import D
 
 
