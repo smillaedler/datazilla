@@ -3,7 +3,7 @@ from random import randint
 
 
 from base import ProjectBatchCommand
-from datazilla.controller.admin.alert_threshold import page_threshold_limit
+from datazilla.daemon.alert_threshold import page_threshold_limit
 from datazilla.model.metrics import MetricsTestModel
 from datazilla.model.metrics2 import DataSource
 from datazilla.util.bunch import Bunch
