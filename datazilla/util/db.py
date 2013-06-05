@@ -6,7 +6,6 @@
 from datetime import datetime
 from string import Template
 import MySQLdb
-from datazilla.util.bunch import Bunch
 from datazilla.util.debug import D
 from datazilla.util.map import Map
 
