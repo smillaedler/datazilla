@@ -4,7 +4,7 @@ from django.conf import LazySettings
 
 from base import ProjectBatchCommand
 from datazilla.util.map import Map
-from datazilla.util.db import get_database_connection
+from datazilla.util.db import DB
 from datazilla.util.debug import D
 
 
@@ -34,7 +34,7 @@ class Command(ProjectBatchCommand):
             D.println("Running alert for project ${project}", {"project":project})
 
             send_alerts(Map(
-                db=get_database_connection(project, "perftest"),
+                db=DB(project, "perftest"),
                 debug=options.get('debug') or datazilla.settings.DEBUG
             ))
         except Exception, e:

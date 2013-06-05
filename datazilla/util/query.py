@@ -14,6 +14,9 @@ class Q:
         return output
 
 
-
+    @classmethod
+    def select(cls, data, field_name):
+    #return list with values from field_name
+       return [d[field_name] for d in data]
 
 

@@ -7,32 +7,25 @@ from datetime import datetime
 from string import Template
 import MySQLdb
 from datazilla.model.utils import nvl
+from datazilla.util.cnv import CNV
 from datazilla.util.debug import D
 from datazilla.util.map import Map
 from datazilla.util.strings import indent
 from datazilla.util.strings import outdent
 
 
-
-## return a database connection
-def get_database_connection(settings):
-
-    return Connection(MySQLdb.connect(
-        host=settings.host,
-        port=settings.port,
-        user=nvl(settings.username, settings.user),
-        passwd=nvl(settings.password, settings.passwd),
-        db=nvl(settings.schema, settings.db)
-    ))
-
-
 DEBUG = False
 
+class DB():
 
-class Connection():
-
-    def __init__(self, db):
-        self.db=db
+    def __init__(self, settings):
+        self.db=MySQLdb.connect(
+            host=settings.host,
+            port=settings.port,
+            user=nvl(settings.username, settings.user),
+            passwd=nvl(settings.password, settings.passwd),
+            db=nvl(settings.schema, settings.db)
+        )
         self.cursor=None
         self.committed=True
         self.debug=DEBUG
@@ -85,7 +78,7 @@ class Connection():
             self.cursor.execute(sql)
 
             columns = tuple( [d[0].decode('utf8') for d in self.cursor.description] )
-            result=[Map(**dict(zip(columns, row))) for row in self.cursor]
+            result=CNV.table2list(columns, self.cursor)
 
             if old_cursor is None:   #CLEANUP AFTER NON-TRANSACTIONAL READS
                 self.cursor.close()

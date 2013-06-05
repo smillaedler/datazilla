@@ -1,18 +1,22 @@
 from datetime import datetime, timedelta
 import json
 from string import Template
+from datazilla.util.cnv import CNV
+from datazilla.util.map import Map
 from datazilla.util.maths import bayesian_add
 from datazilla.util.debug import D
 
 
 ALERT_LIMIT = 0.4 # bayesian_add(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
-TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div><hr>\n")
+TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div>\n")
+SEPARATOR = "<hr>\n"
 RESEND_AFTER = timedelta(days=1)
 MAX_EMAIL_LENGTH = 8000
 
 
 
-def send_alerts(env):
+def send_alerts(**env):
+    env=Map(**env)
     assert env.db is not None
 
     db = env.db
@@ -54,16 +58,16 @@ def send_alerts(env):
             if env.debug: D.println("Nothing important to email")
             return
 
-        body=""
+        body=[]
         for alert in new_alerts:
-            details=json.loads(alert.details)
+            details=CNV.JSON2object(alert.details)
             #EXPAND THE MESSAGE
-            body+=TEMPLATE.substitute({
+            body.append(TEMPLATE.substitute({
                 "score":str(round(bayesian_add(alert.severity, alert.confidence)*100, 0))+"%",  #AS A PERCENT
                 "revision":alert.revision,
                 "reason":Template(alert.description).substitute(details)
-                })
-
+                }))
+        body=SEPARATOR.join(body)
 
 #        listeners = SQLQuery.run({
 #            "select":{"value":"email"},

@@ -23,10 +23,18 @@ class CNV:
 
 
 
-    @classmethod
+    @staticmethod
     def datetime2unix(cls, d):
         return time.mktime(d.timetuple())
 
-    @classmethod
+    @staticmethod
     def unix2datetime(cls, u):
         return datetime.datetime.fromtimestamp(u)
+
+
+    @staticmethod
+    def table2list(
+        column_names, #tuple of columns names
+        rows          #list of tuples
+    ):
+        return [Map(**dict(zip(column_names, r))) for r in rows]

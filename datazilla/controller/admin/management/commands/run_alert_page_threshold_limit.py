@@ -7,7 +7,7 @@ from base import ProjectBatchCommand
 from datazilla.daemons.alert_threshold import page_threshold_limit
 from datazilla.util.cnv import CNV
 from datazilla.util.map import Map
-from datazilla.util.db import get_database_connection
+from datazilla.util.db import DB
 from datazilla.util.debug import D
 
 
@@ -45,7 +45,7 @@ class Command(ProjectBatchCommand):
             D.println("Running alert for project ${project}", {"project":project})
 
             page_threshold_limit(Map(
-                db=get_database_connection(settings.database),
+                db=DB(settings.database),
                 debug=options.get('debug') or (settings.debug is not None),
             ))
         except Exception, e:

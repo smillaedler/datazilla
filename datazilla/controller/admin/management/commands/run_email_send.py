@@ -3,9 +3,10 @@ from random import randint
 
 from base import ProjectBatchCommand
 from datazilla.daemons.email_send import email_send
+from datazilla.util.emailer import Emailer
 from datazilla.util.map import Map
 from datazilla.util.cnv import CNV
-from datazilla.util.db import get_database_connection
+from datazilla.util.db import DB
 from datazilla.util.debug import D
 from datazilla.model.utils import nvl
 
@@ -41,9 +42,9 @@ class Command(ProjectBatchCommand):
             D.println("Running email for project ${project}", {"project":project})
 
             email_send(Map(
-                db=get_database_connection(settings.database),
-                debug=options.get('debug') or (settings.debug is not None),
-                settings=settings
+                db=DB(settings.database),
+                emailer=Emailer(settings.email),
+                debug=options.get('debug') or (settings.debug is not None)
             ))
         except Exception, e:
             D.warning("Failure to run alerts", cause=e)
