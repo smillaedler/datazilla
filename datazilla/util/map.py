@@ -1,6 +1,8 @@
 from datazilla.util.debug import D
 
 class Map(dict):
+#ACCESS dict AND OBJECTS LIKE JAVASCRIPT a.b==a["b"]
+
     def __init__(self, **map):
         dict.__init__(self, map)
         self.__dict__ = self
