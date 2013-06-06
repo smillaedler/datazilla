@@ -2,8 +2,6 @@ DELIMITER ;;
 
 
 
-
-
 DROP PROCEDURE IF EXISTS email_send;;
 CREATE PROCEDURE email_send(
 	to_			VARCHAR(8000),##SEMICOLON SEPARATED EMAIL ADDRESSES
@@ -50,7 +48,7 @@ CREATE PROCEDURE email_send(
 	tos: LOOP
 		IF (length(remainingTo)=0) THEN LEAVE tos; END IF;
 		SET nextTo=locate(";", remainingTo);
-		IF nextTo=0 THEN SET nextTo=length(remainingTo); END IF;
+		IF nextTo=0 THEN SET nextTo=length(remainingTo)+1; END IF;
 		SET deliveryTo =trim(substring(remainingTo, 1, nextTo-1));
 		SET remainingTo=trim(substring(remainingTo, nextTo+1));
 		SET deliveryID=util_newid();

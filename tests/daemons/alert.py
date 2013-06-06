@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
+from random import randint
+from string import Template
 from datazilla import daemons
 from datazilla.daemons.alert import send_alerts
 from datazilla.util.cnv import CNV
 from datazilla.util.db import DB
+from datazilla.util.debug import D
 from datazilla.util.map import Map
 from datazilla.util.maths import bayesian_add
 from datazilla.util.query import Q
@@ -18,9 +21,9 @@ class test_alert:
 
 
     def __init__(self):
-        self.now=datetime.utcnow()
-        self.recent_past=now-timedelta(hours=1)
-        self.far_past=now-timedelta(days=2)
+        self.now=datetime.utcnow()-timedelta(seconds=1)
+        self.recent_past=self.now-timedelta(hours=1)
+        self.far_past=self.now-timedelta(days=2)
 
         self.db=DB(settings.database)
         self.uid=self.db.query("SELECT util_newid() uid FROM DUAL")[0].uid
@@ -40,9 +43,15 @@ class test_alert:
     def setup(self, to_list):
         self.uid=self.db.query("SELECT util_newid() uid FROM DUAL")[0].uid
 
+        #CLEAR EMAILS
+        self.db.execute("DELETE FROM email_delivery")
+        self.db.execute("DELETE FROM email_attachment")
+        self.db.execute("DELETE FROM email_content")
+
         #TEST NUMBER OF LISTENERS IN alert_listeners TABLE
         self.db.execute("DELETE FROM alert_listeners")
-        self.db.insert("alert_listeners", [{"email":l} for l in to_list])
+        for l in to_list:
+            self.db.insert("alert_listeners", {"email":l})
 
 
         #MAKE A REASON FOR USE IN THIS TESTING
@@ -51,12 +60,25 @@ class test_alert:
         self.db.insert("alert_reasons", {
             "code":self.reason,
             "description":">>>>${id}<<<<",
-            "config":None
+            "config":None,
+            "last_run":self.now-timedelta(days=1)
         })
+
+
+        #MAKE SOME TEST DATA (AND GET ID)
+        all_dim=Map(**{
+            "header":
+                ("id","test_run_id","product_id","operating_system_id","test_id","page_id","date_received","revision","product","branch","branch_version","operating_system_name","operating_system_version","processor","build_type","machine_name","pushlog_id","push_date","test_name","page_url","mean","std","h0_rejected","p","n_replicates","fdr","trend_mean","trend_std","test_evaluation","status"),
+            "data":[
+                (0,117679,65,20,64,860,1366261267,"d6b34be6fb4c","Firefox","Mozilla-Inbound","23.0a1","win","6.2.9200","x86_64","opt","t-w864-ix-022","19801727","1366245741","tp5o","bbc.co.uk",138.8,40.5257120028,0,0.650194865224,25,0,144.37333333365,12.96130778322,1,1)
+            ]})
+        self.db.insert_list("test_data_all_dimensions", CNV.table2list(all_dim.header, all_dim.data))
+        self.series=self.db.query("SELECT min(id) id FROM test_data_all_dimensions")[0].id
+
 
         # WE INJECT THE EXPECTED TEST RESULTS RIGHT INTO THE DETAILS, THAT WAY
         # WE CAN SEE THEM IN THE EMAIL DELIVERED
-        test_data=Map({
+        test_data=Map(**{
             "header":
                 ("id",      "status",  "create_time", "last_updated", "last_sent",        "test_series", "reason",    "details",                 "severity",         "confidence",        "solution"),
             "data":[
@@ -78,7 +100,9 @@ class test_alert:
         })
 
         self.test_data=CNV.table2list(test_data.header, test_data.data)
-        self.db.insert("alert_mail", test_data)
+        self.db.insert_list("alert_mail", self.test_data)
+
+
 
         
 
@@ -88,6 +112,7 @@ class test_alert:
 
     def test_send_one_alert(self):
         to_list=["klahnakoski@mozilla.com"]
+
         self.help_send_alerts(to_list)
 
     def test_send_many_alerts(self):
@@ -96,48 +121,58 @@ class test_alert:
 
 
     def help_send_alerts(self, to_list):
-        self.setup(to_list)
+        try:
+            self.db.begin()
+            self.setup(to_list)
 
-        ########################################################################
-        # TEST
-        ########################################################################
-        send_alerts(
-            db=self.db,
-            debug=True
-        )
+            ########################################################################
+            # TEST
+            ########################################################################
+            send_alerts(
+                db=self.db,
+                debug=True
+            )
 
-        ########################################################################
-        # VERIFY
-        ########################################################################
-        expecting_alerts=set([d.id for d in map(lambda d: CNV.JSON2object(d.details), self.test_data) if d.expect=='pass'])
-        if len(to_list)==0: expecting_alerts=[]
+            ########################################################################
+            # VERIFY
+            ########################################################################
+            expecting_alerts=set([d.id for d in map(lambda d: CNV.JSON2object(d.details), self.test_data) if d.expect=='pass'])
+            if len(to_list)==0: expecting_alerts=[]
 
-        emails=self.get_new_emails() # id, to, body
+            emails=self.get_new_emails() # id, to, body
 
-        #VERIFY ONE MAIL SENT
-        assert len(emails)==1
-        #VERIFY to MATCHES WHAT'S EXPECTED
-        assert set(emails[0].to) == set(to_list)
+            #VERIFY ONE MAIL SENT
+            assert len(emails)==1
+            #VERIFY to MATCHES WHAT'S EXPECTED
+            assert set(emails[0].to) == set(to_list), "email_delivery not matching what's send"
 
-        #VERIFY last_sent IS WRITTEN
-        alert_state=self.db.execute("""
-            SELECT
-                id
-            FROM
-                alert_mail
-            WHERE
-                reason=${reason} AND
-                last_sent>=${send_time}
-        """, {
-            "reason":self.reason,
-            "send_time":self.now
-        })
-        actual_marked=set(Q.select(alert_state, "id"))
-        assert expecting_alerts == actual_marked
+            #VERIFY last_sent IS WRITTEN
+            alert_state=self.db.query("""
+                SELECT
+                    id
+                FROM
+                    alert_mail
+                WHERE
+                    reason=${reason} AND
+                    last_sent>=${send_time}
+            """, {
+                "reason":self.reason,
+                "send_time":self.now
+            })
+            actual_marked=set(Q.select(alert_state, "id"))
+            assert expecting_alerts == actual_marked, Template(
+                "Expecting only id in ${expected}, but instead got ${actual}").substitute(
+                    {"expected":str(expecting_alerts),
+                     "actual":str(actual_marked)
+                })
 
-        #VERIFY BODY HAS THE CORRECT ALERTS
-        actual_alerts_sent=set([int(between(b, ">>>>", "<<<<")) for b in emails[0].body.split(daemons.alert.SEPARATOR)])
-        assert expecting_alerts == actual_alerts_sent
+            #VERIFY BODY HAS THE CORRECT ALERTS
+            actual_alerts_sent=set([int(between(b, ">>>>", "<<<<")) for b in emails[0].body.split(daemons.alert.SEPARATOR)])
+            assert expecting_alerts == actual_alerts_sent
+            self.db.commit()
+        except Exception, e:
+            self.db.rollback()
+            D.error("Test failure", e)
 
 
 
@@ -159,3 +194,38 @@ class test_alert:
         for e in emails: e.to=e.to.split(",")
 
         return emails
+
+
+db=DB(settings.database)
+#MAKE UP A DATABASE NAME
+settings.database.schema="testing_perftest"
+settings.database.debug=True
+
+
+D.println("CREATE DATABASE ${database}", {"database":settings.database.schema})
+db.begin()
+db.execute("DROP DATABASE IF EXISTS "+settings.database.schema)
+db.commit()
+db.begin()
+db.execute("CREATE DATABASE "+settings.database.schema)
+db.commit()
+db.close()
+
+
+
+with open("C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\template_schema\\schema_perftest.sql.tmpl") as f:
+    content = f.read()
+    content=content.replace("{engine}", "InnoDB")
+DB.execute_sql(settings.database, content)
+
+DB.execute_file(settings.database, "C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\migration\\v1.1 alerts.sql")
+DB.execute_file(settings.database, "C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\migration\\v1.2 email.sql")
+DB.execute_file(settings.database, "C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\migration\\v1.3 test_data_all_dimensions.sql")
+
+db=DB(settings.database)
+db.begin()
+db.execute("ALTER TABLE test_data_all_dimensions DROP FOREIGN KEY `fk_test_run_id_tdad`")
+db.commit()
+db=None
+
+test_alert().test_send_one_alert()

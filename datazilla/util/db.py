@@ -5,8 +5,9 @@
 #####
 from datetime import datetime
 from string import Template
+import subprocess
 import MySQLdb
-from datazilla.model.utils import nvl
+from datazilla.util.basic import nvl
 from datazilla.util.cnv import CNV
 from datazilla.util.debug import D
 from datazilla.util.map import Map
@@ -27,31 +28,41 @@ class DB():
             db=nvl(settings.schema, settings.db)
         )
         self.cursor=None
-        self.committed=True
+        self.transaction_level=0
         self.debug=DEBUG
         self.backlog=[]     #accumulate the write commands so they are sent at once
 
     def begin(self):
-        if self.cursor is not None:
-            D.error("multiple begin not supported. yet")
-        self.cursor=self.db.cursor()
-        self.committed=False
+        if self.transaction_level==0: self.cursor=self.db.cursor()
+        self.transaction_level+=1
 
     def close(self):
-        if not self.committed:
-           D.error("expecting commit() or rollback() before close")
-        self.cursor.close()
-        self.cursor=None
+        if self.transaction_level>0:
+            D.error("expecting commit() or rollback() before close")
+        self.cursor=None  #NOT NEEDED
 
     def commit(self):
         self.execute_backlog()
-        self.db.commit()
-        self.committed=True
+        if self.transaction_level==0:
+            D.error("No transaction has begun")
+        elif self.transaction_level==1:
+            if self.cursor: self.cursor.close()
+            self.cursor=None
+            self.db.commit()
+        self.transaction_level-=1
 
     def rollback(self):
         self.backlog=[]     #YAY! FREE!
-        self.db.rollback()
-        self.committed=True
+        if self.transaction_level==0:
+            D.error("No transaction has begun")
+        elif self.transaction_level==1:
+            if self.cursor: self.cursor.close()
+            self.cursor=None
+            self.db.rollback()
+        else:
+            D.warning("Can not perform partial rollback!")
+        self.transaction_level-=1
+
 
     def call(self, proc_name, params):
         self.execute_backlog()
@@ -90,12 +101,51 @@ class DB():
 
 
     def execute(self, sql, param=None):
-        if self.cursor is None: D.error("Expecting transation to be started before issuing queries")
+        if self.transaction_level==0: D.error("Expecting transation to be started before issuing queries")
 
         if param is not None: sql=Template(sql).substitute(self.quote(param))
         sql=outdent(sql)
         self.backlog.append(sql)
 
+        
+    def execute_file(self, filename, param=None):
+        with open(filename) as f:
+            content = f.read()
+        self.execute(content, param)
+
+    @staticmethod
+    def execute_sql(settings, sql, param=None):
+        # MySQLdb provides no way to execute an entire SQL file in bulk, so we
+        # have to shell out to the commandline client.
+        if param is not None: sql=Template(sql).substitute(param)
+        
+        args = [
+            "mysql",
+            "-h{0}".format(settings.host),
+            "-u{0}".format(settings.username),
+            "-p{0}".format(settings.password),
+            "{0}".format(settings.schema)
+        ]
+
+        proc = subprocess.Popen(
+            args,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            )
+        (output, _) = proc.communicate(sql)
+
+        if proc.returncode:
+            D.error("Unable to execute sql: return code ${return_code}, ${output}:\n ${sql}\n",
+                    {"sql":indent(sql), "return_code":proc.returncode, "output":output})
+
+    @staticmethod
+    def execute_file(settings, filename, param=None):
+        # MySQLdb provides no way to execute an entire SQL file in bulk, so we
+        # have to shell out to the commandline client.
+        with open(filename) as f:
+            sql = f.read()
+        DB.execute_sql(settings, sql, param)
 
 
     def execute_backlog(self):
@@ -130,6 +180,12 @@ class DB():
         self.execute(command)
 
 
+    def insert_list(self, table_name, list):
+        #PROBABLY CAN BE BETTER DONE WITH executeMany()
+        for l in list:
+            self.insert(table_name, l)
+
+
     #convert values to mysql code for the same
     #mostly delegate directly to the mysql lib, but some exceptions exist
     def quote(self, param):
@@ -141,7 +197,9 @@ class DB():
                 elif isinstance(v, list):
                     v=SQL("("+",".join([self.db.literal(vv) for vv in v])+")")
                 elif isinstance(v, SQL):
-                    pass      
+                    pass
+                elif isinstance(v, Map):
+                    self.db.literal(None)
                 else:
                     v=SQL(self.db.literal(v))
 

@@ -86,13 +86,11 @@ class test_email_send():
 
     def verify_delivery(self, mail_content, to_list):
         #VERIFY DELIVERY IN DATABASE IS SAME AS LIST
-        mail_delivery=self.db.query("SELECT id, deliver_to FROM email_delivery WHERE content=${content_id} ORDER BY deliver_to", {"content_id":mail_content.id})
-        assert len(mail_delivery)==len(to_list)
+        mail_delivery=self.db.query("SELECT id, deliver_to FROM email_delivery WHERE content=${content_id}", {"content_id":mail_content.id})
+        mail_delivery=set(Q.select(mail_delivery, "deliver_to"))
+        assert mail_delivery==to_list
 
-        for i, d in enumerate(to_list):
-            assert mail_delivery[i].deliver_to==d
-
-
+        
     def verify_sent(self, to_list):
         assert len(self.emailer.sent)==1
         assert self.emailer.sent[0].from_address is None
@@ -103,5 +101,5 @@ class test_email_send():
         #THE EMAIL SHOULD HAVE BEEN SENT TO EVERYONE IN to_list. NO MORE, NO LESS
         to_list=set(to_list)
         to_addr=set(self.emailer.sent[0].to_addr)
-        assert len(to_list ^ to_addr)==0
+        assert to_list == to_addr
 

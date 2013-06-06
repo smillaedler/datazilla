@@ -7,6 +7,7 @@
 import os
 from datazilla.util.cnv import CNV
 
+settings_file=os.environ.get("SETTINGS_FILE")
 
-with open(os.environ.get("SETTINGS_FILE", "")) as f:
+with open(settings_file) as f:
     settings=CNV.JSON2object(f.read())
