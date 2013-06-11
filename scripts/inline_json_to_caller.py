@@ -1,6 +1,4 @@
-from optparse import make_option
 import os
-from random import randint
 import re
 
 from datazilla.util.cnv import CNV

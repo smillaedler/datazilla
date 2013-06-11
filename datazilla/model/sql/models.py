@@ -359,7 +359,7 @@ class DataSource(models.Model):
 
         if self.read_only_host:
             data_source[self.key]['read_host'] = {
-                "host": settings.DATAZILLA_RO_DATABASE_HOST,
+                "host": self.read_only_host,
                 "user": settings.DATAZILLA_RO_DATABASE_USER,
                 "passwd": settings.DATAZILLA_RO_DATABASE_PASSWORD,
                 }

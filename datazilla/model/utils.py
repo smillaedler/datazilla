@@ -125,13 +125,6 @@ def println(val, debug):
 
 
 
-def nvl(a, b):
-    #pick the first none-null value
-    if a is None:
-        return b
-    return a
-
-
 ##WHERE DO I PUT THE SETTINGS?
 settings=LazySettings()
 datazilla=Bunch({})
