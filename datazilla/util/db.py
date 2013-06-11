@@ -1,8 +1,13 @@
-#####
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this file,
-# You can obtain one at http://mozilla.org/MPL/2.0/.
-#####
+################################################################################
+## This Source Code Form is subject to the terms of the Mozilla Public
+## License, v. 2.0. If a copy of the MPL was not distributed with this file,
+## You can obtain one at http://mozilla.org/MPL/2.0/.
+################################################################################
+## Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+################################################################################
+
+
+
 from datetime import datetime
 from string import Template
 import subprocess
@@ -28,9 +33,23 @@ class DB():
             db=nvl(settings.schema, settings.db)
         )
         self.cursor=None
+        self.partial_rollback=False
         self.transaction_level=0
         self.debug=DEBUG
         self.backlog=[]     #accumulate the write commands so they are sent at once
+
+
+    def __enter__(self):
+        self.begin()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        try:
+            self.commit()
+        except Exception, e:
+            D.warning("Problems with exiting db", e)
+        self.close()
+
 
     def begin(self):
         if self.transaction_level==0: self.cursor=self.db.cursor()
@@ -40,15 +59,21 @@ class DB():
         if self.transaction_level>0:
             D.error("expecting commit() or rollback() before close")
         self.cursor=None  #NOT NEEDED
+        self.db.close()
 
     def commit(self):
         self.execute_backlog()
         if self.transaction_level==0:
             D.error("No transaction has begun")
         elif self.transaction_level==1:
-            if self.cursor: self.cursor.close()
-            self.cursor=None
-            self.db.commit()
+            if self.partial_rollback:
+                D.warning("Commit after nested rollback is not allowed")
+                self.db.rollback()
+            else:
+                if self.cursor: self.cursor.close()
+                self.cursor=None
+                self.db.commit()
+
         self.transaction_level-=1
 
     def rollback(self):
@@ -60,6 +85,7 @@ class DB():
             self.cursor=None
             self.db.rollback()
         else:
+            self.partial_rollback=True
             D.warning("Can not perform partial rollback!")
         self.transaction_level-=1
 

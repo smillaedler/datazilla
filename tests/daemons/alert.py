@@ -10,7 +10,7 @@ from datazilla.util.map import Map
 from datazilla.util.maths import bayesian_add
 from datazilla.util.query import Q
 from datazilla.util.strings import between
-from util.testing import settings
+from util.testing import settings, make_test_database
 
 class test_alert:
 # datazilla.daemons.alert.py IS A *FUNCTION* WITH DOMAIN alert_* AND CODOMAIN email_*
@@ -20,16 +20,14 @@ class test_alert:
 # LOGIC KNOWS WHAT SHOULD BE IN THOSE email_* TABLES
 
 
-    def __init__(self):
+    def __init__(self, db):
         self.now=datetime.utcnow()-timedelta(seconds=1)
         self.recent_past=self.now-timedelta(hours=1)
         self.far_past=self.now-timedelta(days=2)
 
-        self.db=DB(settings.database)
-        self.uid=self.db.query("SELECT util_newid() uid FROM DUAL")[0].uid
-
+        self.db=db
+#        self.uid=None
         self.series=0
-
         self.reason="used for testing 1"
 
         self.high_severity=0.7
@@ -89,7 +87,7 @@ class test_alert:
                 (self.uid+2,"new",      self.far_past, self.now,       self.far_past,    self.series,   self.reason, CNV.object2JSON({"id":2, "expect":"pass"}),  self.high_severity, self.high_confidence, None),
                 (self.uid+3,"new",      self.now,      self.now,       self.recent_past, self.series,   self.reason, CNV.object2JSON({"id":3, "expect":"pass"}),  self.high_severity, self.high_confidence, None),
                 #TEST obsolete ARE NOT SENT
-                (self.uid+4,"obsolete", self.now,      self.now,       self.now,         self.series,   self.reason, CNV.object2JSON({"id":4, "expect":"fail"}),  self.high_severity, self.high_confidence, None),
+                (self.uid+4,"obsolete", self.now,      self.now,       self.far_past,    self.series,   self.reason, CNV.object2JSON({"id":4, "expect":"fail"}),  self.high_severity, self.high_confidence, None),
                 #TEST ONLY IMPORTANT ARE SENT
                 (self.uid+5,"new",      self.now,      self.now,       None,             self.series,   self.reason, CNV.object2JSON({"id":5, "expect":"pass"}),  self.important,     0.5,                  None),
                 (self.uid+6,"new",      self.now,      self.now,       None,             self.series,   self.reason, CNV.object2JSON({"id":6, "expect":"fail"}),  self.low_severity,  self.high_confidence, None),
@@ -116,7 +114,7 @@ class test_alert:
         self.help_send_alerts(to_list)
 
     def test_send_many_alerts(self):
-        to_list=[self.uid+"_"+str(i)+"@mozilla.com" for i in range(0,10)]
+        to_list=["_"+str(i)+"@mozilla.com" for i in range(0,10)]
         self.help_send_alerts(to_list)
 
 
@@ -136,14 +134,16 @@ class test_alert:
             ########################################################################
             # VERIFY
             ########################################################################
-            expecting_alerts=set([d.id for d in map(lambda d: CNV.JSON2object(d.details), self.test_data) if d.expect=='pass'])
-            if len(to_list)==0: expecting_alerts=[]
-
             emails=self.get_new_emails() # id, to, body
 
+            if len(to_list)==0:
+                assert len(emails)==0
+                self.db.commit()
+                return
+            
             #VERIFY ONE MAIL SENT
             assert len(emails)==1
-            #VERIFY to MATCHES WHAT'S EXPECTED
+            #VERIFY to MATCHES WHAT WAS PASSED TO THIS FUNCTION
             assert set(emails[0].to) == set(to_list), "email_delivery not matching what's send"
 
             #VERIFY last_sent IS WRITTEN
@@ -159,14 +159,16 @@ class test_alert:
                 "reason":self.reason,
                 "send_time":self.now
             })
+            expected_marked=set([d.id for d in self.test_data if CNV.JSON2object(d.details).expect=='pass'])
             actual_marked=set(Q.select(alert_state, "id"))
-            assert expecting_alerts == actual_marked, Template(
+            assert expected_marked == actual_marked, Template(
                 "Expecting only id in ${expected}, but instead got ${actual}").substitute(
-                    {"expected":str(expecting_alerts),
+                    {"expected":str(expected_marked),
                      "actual":str(actual_marked)
                 })
 
             #VERIFY BODY HAS THE CORRECT ALERTS
+            expecting_alerts=set([d.id for d in map(lambda d: CNV.JSON2object(d.details), self.test_data) if d.expect=='pass'])
             actual_alerts_sent=set([int(between(b, ">>>>", "<<<<")) for b in emails[0].body.split(daemons.alert.SEPARATOR)])
             assert expecting_alerts == actual_alerts_sent
             self.db.commit()
@@ -191,41 +193,18 @@ class test_alert:
             GROUP BY
                 c.id
             """)
-        for e in emails: e.to=e.to.split(",")
+        for e in emails:
+            if e.to is None:
+                e.to=[]
+            else:
+                e.to=e.to.split(",")
 
         return emails
 
 
-db=DB(settings.database)
-#MAKE UP A DATABASE NAME
-settings.database.schema="testing_perftest"
-settings.database.debug=True
+make_test_database(settings)
 
-
-D.println("CREATE DATABASE ${database}", {"database":settings.database.schema})
-db.begin()
-db.execute("DROP DATABASE IF EXISTS "+settings.database.schema)
-db.commit()
-db.begin()
-db.execute("CREATE DATABASE "+settings.database.schema)
-db.commit()
-db.close()
-
-
-
-with open("C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\template_schema\\schema_perftest.sql.tmpl") as f:
-    content = f.read()
-    content=content.replace("{engine}", "InnoDB")
-DB.execute_sql(settings.database, content)
-
-DB.execute_file(settings.database, "C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\migration\\v1.1 alerts.sql")
-DB.execute_file(settings.database, "C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\migration\\v1.2 email.sql")
-DB.execute_file(settings.database, "C:\\Users\\klahnakoski\\git\\datazilla\\datazilla\\model\\sql\\migration\\v1.3 test_data_all_dimensions.sql")
-
-db=DB(settings.database)
-db.begin()
-db.execute("ALTER TABLE test_data_all_dimensions DROP FOREIGN KEY `fk_test_run_id_tdad`")
-db.commit()
-db=None
-
-test_alert().test_send_one_alert()
+with DB(settings.database) as db:
+    test_alert(db).test_send_zero_alerts()
+    test_alert(db).test_send_one_alert()
+    test_alert(db).test_send_many_alerts()

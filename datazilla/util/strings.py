@@ -1,8 +1,11 @@
-#####
-# This Source Code Form is subject to the terms of the Mozilla Public
-# License, v. 2.0. If a copy of the MPL was not distributed with this file,
-# You can obtain one at http://mozilla.org/MPL/2.0/.
-#####
+################################################################################
+## This Source Code Form is subject to the terms of the Mozilla Public
+## License, v. 2.0. If a copy of the MPL was not distributed with this file,
+## You can obtain one at http://mozilla.org/MPL/2.0/.
+################################################################################
+## Author: Kyle Lahnakoski (kyle@lahnakoski.com)
+################################################################################
+
 
 
 def indent(value, prefix=None):
@@ -26,6 +29,7 @@ def between(value, prefix, suffix):
     e=value.find(suffix, s)
     if e==-1: raise Exception("can not find '"+suffix+"'")
 
+    s=value.rfind(prefix, 0, e)+len(prefix) #WE KNOW THIS EXISTS, BUT THERE MAY BE A RIGHT-MORE ONE
     return value[s:e]
 
 

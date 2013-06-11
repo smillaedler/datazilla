@@ -7,11 +7,12 @@ from datazilla.util.maths import bayesian_add
 from datazilla.util.debug import D
 
 
-ALERT_LIMIT = 0.4 # bayesian_add(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
+ALERT_LIMIT = bayesian_add(0.90, 0.70)  #SIMPLE severity*confidence LIMIT (FOR NOW)
 TEMPLATE = Template("<div><h2>${score} - ${revision}</h2>${reason}</div>\n")
 SEPARATOR = "<hr>\n"
 RESEND_AFTER = timedelta(days=1)
 MAX_EMAIL_LENGTH = 8000
+EPSILON = 0.0001
 
 
 
@@ -51,7 +52,7 @@ def send_alerts(**env):
                 a.solution IS NULL
             """, {
                 "last_sent":datetime.utcnow()-RESEND_AFTER,
-                "alert_limit":ALERT_LIMIT
+                "alert_limit":ALERT_LIMIT-EPSILON
             })
 
         if len(new_alerts)==0:

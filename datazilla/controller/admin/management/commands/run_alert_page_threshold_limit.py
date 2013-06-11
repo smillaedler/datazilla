@@ -44,10 +44,11 @@ class Command(ProjectBatchCommand):
         try:
             D.println("Running alert for project ${project}", {"project":project})
 
-            page_threshold_limit(Map(
-                db=DB(settings.database),
-                debug=options.get('debug') or (settings.debug is not None),
-            ))
+            with DB(settings.database) as db:
+                page_threshold_limit(
+                    db=db,
+                    debug=options.get('debug') or (settings.debug is not None),
+                )
         except Exception, e:
             D.warning("Failure to run alerts", cause=e)
 

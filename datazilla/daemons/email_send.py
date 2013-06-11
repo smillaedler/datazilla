@@ -10,7 +10,7 @@ from datazilla.util.debug import D
 from datazilla.util.map import Map
 
 def email_send(**env):
-    env=Map(env)
+    env=Map(**env)
     assert env.db is not None               #EXPECTING db WITH EMAIL SCHEMA
     assert env.emailer is not None          #EXPECTING SMTP CONNECTION INFO
 
@@ -70,10 +70,8 @@ def email_send(**env):
 
         D.println(str(num_done)+" emails have been sent")
         db.commit()
-        db.close()
     except Exception, e:
         db.rollback()
-        db.close()
         D.error("Could not send emails", e)
 
 

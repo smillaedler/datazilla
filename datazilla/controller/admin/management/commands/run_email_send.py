@@ -41,11 +41,12 @@ class Command(ProjectBatchCommand):
         try:
             D.println("Running email for project ${project}", {"project":project})
 
-            email_send(Map(
-                db=DB(settings.database),
-                emailer=Emailer(settings.email),
-                debug=options.get('debug') or (settings.debug is not None)
-            ))
+            with DB(settings.database) as db:
+                email_send(
+                    db=db,
+                    emailer=Emailer(settings.email),
+                    debug=options.get('debug') or (settings.debug is not None)
+                )
         except Exception, e:
             D.warning("Failure to run alerts", cause=e)
 

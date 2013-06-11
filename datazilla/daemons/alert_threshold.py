@@ -101,10 +101,8 @@ def page_threshold_limit (env):
             db.execute("UPDATE alert_mail SET status='obsolete' WHERE id IN (${list}", {"list":obsolete})
 
         db.commit()
-        db.close()
     except Exception, e:
         db.rollback()
-        db.close()
         D.error("Could not perform threshold comparisons", e)
 
 

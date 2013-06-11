@@ -8,7 +8,8 @@ CREATE PROCEDURE email_send(
 	subject_	VARCHAR(200),
 	body_		VARCHAR(16000),
 	attachment_	VARCHAR(200)
-) BEGIN
+) 
+es: BEGIN
 	DECLARE contentID INTEGER;
 	DECLARE deliveryID INTEGER;
 	DECLARE attachmentID INTEGER;
@@ -16,9 +17,11 @@ CREATE PROCEDURE email_send(
 	DECLARE nextTo INTEGER;
 	DECLARE deliveryTo VARCHAR(200);
 
-	SET contentID=util_newid();
 	SET remainingTo=trim(to_);
+	IF (length(remainingTo)=0) THEN LEAVE es; END IF;
 
+	SET contentID=util_newid();
+	
 	START TRANSACTION;
 
 	INSERT INTO email_content (id, subject, date_sent, body) VALUES (
