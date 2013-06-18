@@ -11,6 +11,7 @@
 import json
 import time
 import datetime
+from datazilla.util.debug import D
 from datazilla.util.map import Map
 
 class CNV:
@@ -25,11 +26,18 @@ class CNV:
 
     @staticmethod
     def string2datetime(value, format):
-        return time.strptime(value, format)
+        try:
+            return datetime.datetime.strptime(value, format)
+        except Exception, e:
+            D.error("Can not format ${value} with ${format}", {"value":value, "format":format}, e)
+
 
     @staticmethod
     def datetime2string(value, format):
-        return value.strftime(format)
+        try:
+            return value.strftime(format)
+        except Exception, e:
+            D.error("Can not format ${value} with ${format}", {"value":value, "format":format}, e)
 
 
 

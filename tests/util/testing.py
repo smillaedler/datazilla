@@ -41,5 +41,6 @@ def make_test_database(settings):
 
     with DB(settings.database) as db:
         db.execute("ALTER TABLE test_data_all_dimensions DROP FOREIGN KEY `fk_test_run_id_tdad`")
+        db.execute("ALTER TABLE pages DROP FOREIGN KEY `fk_pages_test`")
 
     D.println("DATABASE READY ${database}", {"database":settings.database.schema})

@@ -3,14 +3,16 @@
 ## License, v. 2.0. If a copy of the MPL was not distributed with this file,
 ## You can obtain one at http://mozilla.org/MPL/2.0/.
 ################################################################################
-
+from datetime import datetime, timedelta
+from docutils.nodes import contact
 
 from datazilla.daemons.alert_threshold import page_threshold_limit
 from datazilla.util.cnv import CNV
 from datazilla.util.db import SQL, DB
 from datazilla.util.debug import D
+from datazilla.util.map import Map
 
-from util.testing import settings, make_test_database
+from tests.util.testing import settings, make_test_database
 
 
 
@@ -19,6 +21,7 @@ class test_alert_threshold:
 
     def __init__(self, db):
         self.db=db
+        self.db.debug=True
         self.url="amazon.com"   #JUST A DUMMY VALUE
         self.reason='page_threshold_limit'
         self.severity=0.5
@@ -30,10 +33,17 @@ class test_alert_threshold:
         uid=self.db.query("SELECT util_newid() uid FROM DUAL")[0].uid
 
         ## VERFIY THE alert_reason EXISTS
-        exists=self.db.query("SELECT count(1) FROM alert_reasons WHERE code='page_threshold_limit'")
+        exists=self.db.query("SELECT count(1) num FROM alert_reasons WHERE code='page_threshold_limit'")[0].num
         if exists==0:
             D.error("Expecting the database to have an alert_reason=${reason}", {"reason":self.reason})
-        
+
+        ## MAKE A 'PAGE' TO TEST
+        self.db.execute("DELETE FROM pages")
+        self.db.insert("pages", {
+            "test_id":0,
+            "url":self.url
+        })
+        self.page_id=self.db.query("SELECT id FROM pages")[0].id
 
         ## ADD A THRESHOLD TO TEST WITH
         self.db.execute("""
@@ -45,22 +55,19 @@ class test_alert_threshold:
                 reason,
                 time_added,
                 contact
-            )
-            SELECT
+            ) VALUES (
                 ${uid},
-                p.id,
+                ${page_id},
                 ${threshold},
                 ${severity},
                 concat("(", ${url}, ") for test"),
                 now(),
                 "klahnakoski@mozilla.com"
-            FROM
-                pages p
-            WHERE
-                p.url=${url}
+            )
             """, {
             "uid":uid,
             "url":self.url,
+            "page_id":self.page_id,
             "severity":self.severity,
             "threshold":800
         })
@@ -68,15 +75,18 @@ class test_alert_threshold:
         ##ENSURE THERE ARE NO ALERTS IN DB
         self.db.execute("DELETE FROM alert_mail WHERE reason=${reason}", {"reason":self.reason})
 
+        self.insert_test_data()
 
 
     def test_alert_generated(self):
         self.setup()
+        self.db.commit()
+        self.db.begin()
 
-        page_threshold_limit ({
-            "db":self.db,
-            "debug":True
-        })
+        page_threshold_limit (
+            db=self.db,
+            debug=True
+        )
 
 
         ## VERIFY AN ALERT IS GENERATED
@@ -99,38 +109,60 @@ class test_alert_threshold:
         })
 
         assert len(alert)==1
-        assert alert[0].staus=='new'
+        assert alert[0].status=='new'
         assert alert[0].severity==self.severity
         assert alert[0].confidence==1.0
 
+        #VERIFY last_run HAS BEEEN UPDATED
+        last_run=self.db.query("SELECT last_run FROM alert_reasons WHERE code=${type}", {"type":self.reason})[0].last_run
+        assert last_run>=datetime.utcnow()+timedelta(minutes=-1)
+
+
+
         #REMEMEBER id FOR CHECKING OBSOLETE
-        self.id=alert[0].id
+        self.alert_id=alert[0].id
 
 
 
     ## TEST AN INCREASE IN THE THRESHOLD OBSOLETES THE ALERT
     def test_alert_obsolete(self):
+        ##SETUP
+        assert self.alert_id is not None  #EXPECTING test_alert_generated TO BE RUN FIRST
 
-        assert self.id is not None  #EXPECTING test_alert_generated TO BE RUN FIRST
+        self.db.execute("UPDATE alert_page_thresholds SET threshold=${threshold} WHERE page=${page_id}",{
+            "threshold":900,
+            "page_id":self.page_id
+        })
+
+        ## TEST
+        page_threshold_limit (
+            db=self.db,
+            debug=True
+        )
+
+        ## VERIFY
+        new_state=self.db.query(
+            "SELECT status FROM alert_mail WHERE id=${alert_id}",
+            {"alert_id":self.alert_id}
+        )
+
+        assert len(new_state)==1
+        assert new_state[0].status=="obsolete"
+        
 
 
-        pass
-
-
-
-    def make_test_data(self):
+    def insert_test_data(self):
 
         for t in CNV.table2list(test_data.header, test_data.rows):
-            time=CNV.datetime2unix(CNV.string2datetime(t.date, "%Y-%m-%d %h:%M:%S"))
+            time=CNV.datetime2unix(CNV.string2datetime(t.date, "%Y-%b-%d %H:%M:%S"))
 
             self.db.insert("test_data_all_dimensions",{
-                "date_run":time,
                 "id":SQL("util_newid()"),
-                "test_run_id":test_run_id119181,
+                "test_run_id":SQL("util_newid()"),
                 "product_id":0,
                 "operating_system_id":0,
                 "test_id":0,
-                "page_id":0,
+                "page_id":self.page_id,
                 "date_received":time,
                 "revision":"ba928cbd5191",
                 "product":"Firefox",
@@ -145,8 +177,8 @@ class test_alert_threshold:
                 "push_date":time,
                 "test_name":"tp5o",
                 "page_url":self.url,
-                "mean":t.mean,
-                "std":t["std+mean"]-t.mean,
+                "mean":float(t.mean),
+                "std":float(t["mean+std"])-float(t.mean),
                 "h0_rejected":None,
                 "p":None,
                 "n_replicates":t.count,
@@ -162,7 +194,7 @@ class test_alert_threshold:
 
 
 ## DEFINE SOME TEST DATA
-test_data={
+test_data=Map(**{
     "header":("date", "count", "mean-std", "mean", "mean+std"),
     "rows":[
         ("2013-Apr-05 13:53:00", "23", "458.4859477694967", "473.30434782608694", "488.1227478826772"),
@@ -198,12 +230,12 @@ test_data={
         ("2013-Apr-05 17:12:00", "23", "598.3432138277318", "617.7391304347826", "637.1350470418334"),
         ("2013-Apr-05 17:23:00", "23", "801.0537973113723", "822.1739130434783", "843.2940287755843")  # <--SPIKE IN DATA
     ]
-}
+})
 
 make_test_database(settings)
 
-
 with DB(settings.database) as db:
-    test_alert_threshold(db).test_alert_generated()
-    test_alert_threshold(db).test_alert_obsolete()
+    tester=test_alert_threshold(db)
+    tester.test_alert_generated()
+    tester.test_alert_obsolete()
     

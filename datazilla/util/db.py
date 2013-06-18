@@ -47,8 +47,10 @@ class DB():
         try:
             self.commit()
         except Exception, e:
-            D.warning("Problems with exiting db", e)
-        self.close()
+            self.rollback()
+            D.error("Problems while connected to db", e)
+        finally:
+            self.close()
 
 
     def begin(self):
