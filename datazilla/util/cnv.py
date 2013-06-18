@@ -23,14 +23,22 @@ class CNV:
     def JSON2object(json_string):
         return Map(**json.loads(json_string))
 
+    @staticmethod
+    def string2datetime(value, format):
+        return time.strptime(value, format)
+
+    @staticmethod
+    def datetime2string(value, format):
+        return value.strftime(format)
+
 
 
     @staticmethod
-    def datetime2unix(cls, d):
+    def datetime2unix(d):
         return time.mktime(d.timetuple())
 
     @staticmethod
-    def unix2datetime(cls, u):
+    def unix2datetime(u):
         return datetime.datetime.fromtimestamp(u)
 
 

@@ -9,7 +9,7 @@ from datazilla.util.debug import D
 
 
 #simplest of rules to test the dataflow from test_run, to alert, to email
-#may prove slightly useful too!
+#may prove slightly useful also!
 ##point out any pages that are breaking human-set threshold limits
 def page_threshold_limit (env):
     assert env.db is not None
@@ -65,7 +65,9 @@ def page_threshold_limit (env):
                 "reason":type_name,
                 "details":CNV.object2JSON({"expected":float(page.threshold), "actual":float(page.mean), "reason":page.reason}),
                 "severity":page.severity,
-                "confidence":1.0  #USING NORMAL DIST ASSUMPTION WE CAN MESS WITH CONFIDENCE EVEN BEFORE THRESHOLD IS HIT!
+                "confidence":1.0    # USING NORMAL DIST ASSUMPTION WE CAN ADJUST
+                                    # CONFIDENCE EVEN BEFORE THRESHOLD IS HIT!
+                                    # FOR NOW WE KEEP IT SIMPLE
             }
 
             db.insert("alert_mail", alert)

@@ -1,5 +1,10 @@
+################################################################################
+## This Source Code Form is subject to the terms of the Mozilla Public
+## License, v. 2.0. If a copy of the MPL was not distributed with this file,
+## You can obtain one at http://mozilla.org/MPL/2.0/.
+################################################################################
+
 from datetime import datetime, timedelta
-from random import randint
 from string import Template
 from datazilla import daemons
 from datazilla.daemons.alert import send_alerts
@@ -11,6 +16,7 @@ from datazilla.util.maths import bayesian_add
 from datazilla.util.query import Q
 from datazilla.util.strings import between
 from util.testing import settings, make_test_database
+
 
 class test_alert:
 # datazilla.daemons.alert.py IS A *FUNCTION* WITH DOMAIN alert_* AND CODOMAIN email_*
