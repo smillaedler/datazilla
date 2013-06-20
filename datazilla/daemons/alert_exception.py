@@ -1,19 +1,29 @@
+################################################################################
+## This Source Code Form is subject to the terms of the Mozilla Public
+## License, v. 2.0. If a copy of the MPL was not distributed with this file,
+## You can obtain one at http://mozilla.org/MPL/2.0/.
+################################################################################
 from datetime import timedelta, datetime
 from numpy.lib.scimath import power, sqrt
 from scipy.stats.distributions import t
+from datazilla.daemons.alert import update_h0_rejected
+from datazilla.util.basic import nvl
+from datazilla.util.cnv import CNV
 from datazilla.util.db import SQL
+from datazilla.util.map import Map
 from datazilla.util.query import Q
-from datazilla.util.stats import Moments, stats2moments, Stats, moments2stats
+from datazilla.util.stats import Z_moment, stats2z_moment, Stats, z_moment2stats
 
 
 
 SEVERITY = 0.9
 CONFIDENCE_THRESHOLD = 0.05
-TYPE_NAME="exception_point"     #name of the reason in alert_reason
-LOOK_BACK=timedelta(weeks=4)
+REASON="exception_point"     #name of the reason in alert_reason
+LOOK_BACK=timedelta(weeks=24)
 
-def exception_point (env):
+def exception_point (**env):
 ##find single points that deviate from the trend
+    env=Map(**env)
     assert env.db is not None
 
     db=env.db
@@ -27,16 +37,23 @@ def exception_point (env):
     test_results=db.query("""
         SELECT
             id test_series,
-            test_run_id,
+            test_name,
+            branch,
+            branch_version,
+            operating_system_name,
+            operating_system_version,   
             page_id,
+            test_run_id,
             date_received,
             n_replicates `count`,
-            mean
+            mean,
             std
         FROM
             test_data_all_dimensions t
         WHERE
-            coalesce(push_date, date_received)>unix_timestamp(${begin_time})
+            test_name="tp5o" AND
+            coalesce(push_date, date_received)>unix_timestamp(${begin_time}) AND
+            n_replicates IS NOT NULL
         ORDER BY
             test_run_id,
             page_id,
@@ -47,27 +64,35 @@ def exception_point (env):
 
     alerts=[]   #PUT ALL THE EXCEPTION ITEM HERE
 
-    for keys, values in Q.groupby(test_results, ("test_run_id", "page_id")):
-        total=Moments(0,0,0)          #total ROLLING STATS ACCUMULATION
-        count=0
+    for keys, values in Q.groupby(test_results, ["test_name", "branch", "branch_version", "operating_system_name", "page_id"]):
+        total=Z_moment()                #total ROLLING STATS ACCUMULATION
         if len(values)<=1: continue     #CAN DO NOTHING WITH THIS ONE SAMPLE
-        for v in values:
-            s=Stats(count=v.count, mean=v.mean, std=v.std)
-            if count==0:
-                v.status="unknown"
-            else:
+        
+        for count, v in enumerate(values):
+            s=Stats(count=v.count, mean=v.mean, std=v.std, biased=True)
+            if count>0:
                 #SEE HOW MUCH THE CURRENT STATS DEVIATES FROM total
-                p=welchs_ttest(s, moments2stats(total, unbiased=True))
-                v.severity=SEVERITY,
-                v.confidence=1-p
-                v.status="known"
-                if p<CONFIDENCE_THRESHOLD: alerts.append(v)
+                t=z_moment2stats(total, unbiased=True)
+                confidence, diff=welchs_ttest(s, t)
+                if 1-CONFIDENCE_THRESHOLD < confidence:
+                    alerts.append(Map(
+                        status="new",
+                        create_time=datetime.utcnow(),
+                        test_series=v.test_series,
+                        reason=REASON,
+                        details=CNV.object2JSON({
+                            "amount":diff,
+                            "confidence":v.confidence
+                        }),
+                        severity=SEVERITY,
+                        confidence=confidence
+                    ))
             #accumulate v
-            m=stats2moments(s)
+            m=stats2z_moment(s)
             v.m=m
             total=total+m
-            if count>5: total=total-values[count-5].m  #WINDOW LIMITED TO 5 SAMPLES
-            count+=1
+            if count>=5:
+                total=total-values[count-5].m  #WINDOW LIMITED TO 5 SAMPLES
 
 
     #CHECK THE CURRENT ALERTS
@@ -78,16 +103,17 @@ def exception_point (env):
             a.status,
             a.last_updated,
             a.severity,
-            a.confidence
+            a.confidence,
+            a.solution
         FROM
             alert_mail a
         WHERE
-            coalesce(push_date, date_received)>unix_timestamp(${begin_time}) AND
+            coalesce(last_updated, create_time)>unix_timestamp(${begin_time}) AND
             reason=${type} 
         """, {
             "begin_time":start_time,
             "list":[a.test_series for a in alerts],
-            "type":TYPE_NAME
+            "type":REASON
         }
     )
 
@@ -98,21 +124,31 @@ def exception_point (env):
     for a in alerts:
         #CHECK IF ALREADY AN ALERT
         if a.test_series in lookup_current:
+            if len(nvl(a.solution, "").trim())==0: continue  # DO NOT TOUCH SOLVED ALERTS
+
             c=lookup_current[a.test_series]
-            if round(a.severity, 3)!=round(c.severity, 3) or round(a.confidence, 3)!=round(c.confidence, 3):
+            if round(a.severity, 5)!=round(c.severity, 5) or round(a.confidence, 5)!=round(c.confidence, 5):
                 a.last_updated=datetime.utcnow()
                 db.update("alert_mail", {"id":a.id}, a)
         else:
             a.id=SQL("util_newid()")
             a.last_updated=datetime.utcnow()
-            db.add("alert_mail", a)
+            db.insert("alert_mail", a)
 
+    #OBSOLETE THE ALERTS THAT ARE NO LONGER VALID
     for c in current_alerts:
         if c.test_series not in lookup_alert:
             c.status="obsolete"
             c.last_updated=datetime.utcnow()
             db.update("alert_mail", {"id":c.id}, c)
 
+    db.execute(
+        "UPDATE alert_reasons SET last_run=${run_time} WHERE code=${reason}", {
+        "run_time":datetime.utcnow(),
+        "reason":REASON
+    })
+
+    update_h0_rejected(db, start_time)
 
 
 def welchs_ttest(stats1, stats2):
@@ -127,23 +163,19 @@ def welchs_ttest(stats1, stats2):
 
     n1=stats1.count
     m1=stats1.mean
-    s1=stats1.std
+    v1=stats1.variance
 
     n2=stats2.count
     m2=stats2.mean
-    s2=stats2.std
+    v2=stats2.variance
 
 
-
-
-    v1             = power(s1, 2)
-    v2             = power(s2, 2)
     vpooled        = v1/n1 + v2/n2
-    spooled        = sqrt(vpooled)
-    tt             = (m1-m2)/spooled
+    tt             = (m1-m2)/sqrt(vpooled)
+
     df_numerator   = power(vpooled, 2)
     df_denominator = power(v1/n1, 2)/(n1-1) + power(v2/n2, 2)/(n2-1)
     df             = df_numerator / df_denominator
 
     t_distribution = t(df)
-    return 1 - t_distribution.cdf(tt)
+    return t_distribution.cdf(tt), m1-m2

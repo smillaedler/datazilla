@@ -62,14 +62,14 @@ CREATE PROCEDURE get_version(
 	
 	SELECT DATABASE() INTO schema_name FROM DUAL;
 	
-	SELECT count(1) INTO is_version_1 FROM information_schema.tables WHERE table_schema=schema_name AND table_name='version';
+	SELECT count(1) INTO is_version_1 FROM information_schema.tables WHERE table_schema=schema_name AND table_name='database';
 	IF (is_version_1=0) THEN 
-		CALL exec(concat('CREATE TABLE ', schema_name, '.version (id	VARCHAR(10))'), false);
-		CALL exec(concat('INSERT INTO ', schema_name, '.version VALUES (''1.0'')'), false);
+		CALL exec(concat('CREATE TABLE ', schema_name, '.database (version	VARCHAR(10))'), false);
+		CALL exec(concat('INSERT INTO ', schema_name, '.database VALUES (''1.0'')'), false);
 		SET version='1.0';
 	ELSE 
 		SET @version='1.0';
-		CALL exec(concat('SELECT max(id) INTO @version FROM ', schema_name, '.version'), false);
+		CALL exec(concat('SELECT max(version) INTO @version FROM ', schema_name, '.database'), false);
 		SET version=@version;
 	END IF;	
 END;;
@@ -150,13 +150,13 @@ m11: BEGIN
 		p.id,
 		200,
 		0.5,
-		"(amazon.com) because I like to complain",
+		"(mozilla.com) because I like to complain",
 		now(),
 		"klahnakoski@mozilla.com"
 	FROM
 		pages p 
 	WHERE
-		p.url='amazon.com'
+		p.url='mozilla.com'
 	;
 	
 
@@ -186,7 +186,7 @@ m11: BEGIN
 		FOREIGN KEY alert_reason (reason) REFERENCES alert_reasons(code)
 	);
 	
-	UPDATE `version` SET id='1.1';
+	UPDATE `database` SET version='1.1';
 	
 END;;
 

@@ -139,7 +139,7 @@ m11: BEGIN
 
 
 
-	UPDATE `version` SET id='1.2';
+	UPDATE `database` SET version='1.2';
 
 END;;
 

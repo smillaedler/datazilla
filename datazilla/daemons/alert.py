@@ -103,3 +103,21 @@ def send_alerts(**env):
         db.rollback()
         D.error("Could not send alerts", e)
 
+# REVIEW THE ALERT TABLE AND ENSURE THE test_data_all_dimensions(h0_rejected)
+# COLUMN REFLECTS THE ALERT STATI
+def update_h0_rejected(db, start_date):
+    db.execute("""
+        UPDATE 
+            test_data_all_dimensions t
+        JOIN (
+            SELECT
+                test_series,
+                max(CASE WHEN status<>'obsolete' THEN 1 ELSE 0 END) h0
+            FROM
+                alert_mail
+            GROUP BY
+                test_series
+            ) a ON a.test_series=t.id
+        SET t.h0_rejected=a.h0
+    """)
+    

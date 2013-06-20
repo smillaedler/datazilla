@@ -1,34 +1,39 @@
+################################################################################
+## This Source Code Form is subject to the terms of the Mozilla Public
+## License, v. 2.0. If a copy of the MPL was not distributed with this file,
+## You can obtain one at http://mozilla.org/MPL/2.0/.
+################################################################################
+
 from datetime import timedelta, datetime
+from datazilla.daemons.alert import update_h0_rejected
 from datazilla.util.basic import nvl
 from datazilla.util.cnv import CNV
 from datazilla.util.db import SQL
 from datazilla.util.debug import D
+from datazilla.util.map import Map
 
 
 
-
-
+REASON="page_threshold_limit"     #name of the reason in alert_reason
+LOOK_BACK=timedelta(weeks=4)
 
 #simplest of rules to test the dataflow from test_run, to alert, to email
 #may prove slightly useful also!
 ##point out any pages that are breaking human-set threshold limits
-from datazilla.util.map import Map
-
 def page_threshold_limit(**env):
     env=Map(**env)
     assert env.db is not None
     
-    reason="page_threshold_limit"     #name of the reason in alert_reason
+    REASON="page_threshold_limit"     #name of the reason in alert_reason
 
     db = env.db
     db.debug = env.debug
 
     try:
         #CALCULATE HOW FAR BACK TO LOOK
-        db.begin()
-        lasttime = db.query("SELECT last_run, description FROM alert_reasons WHERE code=${type}", {"type":reason})[0]
+        lasttime = db.query("SELECT last_run, description FROM alert_reasons WHERE code=${type}", {"type":REASON})[0]
         lasttime = nvl(lasttime.last_run, datetime.utcnow())
-        min_date=lasttime+timedelta(weeks=-4)
+        min_date=lasttime+LOOK_BACK
 
         #FIND ALL PAGES THAT HAVE LIMITS TO TEST
         #BRING BACK ONES THAT BREAK LIMITS
@@ -54,7 +59,7 @@ def page_threshold_limit(**env):
                 t.push_date>${min_date} AND
                 (m.id IS NULL OR m.status='obsolete')
             """,
-            {"type":reason, "min_date":min_date}
+            {"type":REASON, "min_date":min_date}
         )
 
         #FOR EACH PAGE THAT BREAKS LIMITS
@@ -67,7 +72,7 @@ def page_threshold_limit(**env):
                 "create_time":datetime.utcnow(),
                 "last_updated":datetime.utcnow(),
                 "test_series":page.test_series_id,
-                "reason":reason,
+                "reason":REASON,
                 "details":CNV.object2JSON({"expected":float(page.threshold), "actual":float(page.mean), "reason":page.reason}),
                 "severity":page.severity,
                 "confidence":1.0    # USING NORMAL DIST ASSUMPTION WE CAN ADJUST
@@ -98,7 +103,7 @@ def page_threshold_limit(**env):
                 t.push_date>${time}
             """,
             {
-                "reason":reason,
+                "reason":REASON,
                 "time":min_date
             }
         )
@@ -109,12 +114,13 @@ def page_threshold_limit(**env):
 
         db.execute(
             "UPDATE alert_reasons SET last_run=${now} WHERE code=${reason}",
-            {"now":datetime.utcnow(), "reason":reason}
+            {"now":datetime.utcnow(), "reason":REASON}
         )
 
-        db.commit()
+        update_h0_rejected(db, min_date)
+
     except Exception, e:
-        db.rollback()
+
         D.error("Could not perform threshold comparisons", e)
 
 
