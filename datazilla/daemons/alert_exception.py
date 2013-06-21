@@ -10,6 +10,7 @@ from datazilla.daemons.alert import update_h0_rejected
 from datazilla.util.basic import nvl
 from datazilla.util.cnv import CNV
 from datazilla.util.db import SQL
+from datazilla.util.debug import D
 from datazilla.util.map import Map
 from datazilla.util.query import Q
 from datazilla.util.stats import Z_moment, stats2z_moment, Stats, z_moment2stats
@@ -17,7 +18,7 @@ from datazilla.util.stats import Z_moment, stats2z_moment, Stats, z_moment2stats
 
 
 SEVERITY = 0.9
-CONFIDENCE_THRESHOLD = 0.05
+MIN_CONFIDENCE = 0.99
 REASON="exception_point"     #name of the reason in alert_reason
 LOOK_BACK=timedelta(weeks=24)
 
@@ -25,14 +26,16 @@ def exception_point (**env):
 ##find single points that deviate from the trend
     env=Map(**env)
     assert env.db is not None
-
+    debug=env.debug
     db=env.db
+#    db.debug=debug
 
     #LOAD CONFIG
     start_time=datetime.utcnow()-LOOK_BACK
 
     #CALCULATE HOW FAR BACK TO LOOK
     #BRING IN ALL NEEDED DATA
+    if debug: D.println("Pull all data")
 
     test_results=db.query("""
         SELECT
@@ -41,7 +44,8 @@ def exception_point (**env):
             branch,
             branch_version,
             operating_system_name,
-            operating_system_version,   
+            operating_system_version,
+            processor,
             page_id,
             test_run_id,
             date_received,
@@ -64,17 +68,29 @@ def exception_point (**env):
 
     alerts=[]   #PUT ALL THE EXCEPTION ITEM HERE
 
-    for keys, values in Q.groupby(test_results, ["test_name", "branch", "branch_version", "operating_system_name", "page_id"]):
+    if debug: D.println("Find exceptions")
+
+    for keys, values in Q.groupby(test_results, ["test_name", "branch", "branch_version", "operating_system_name", "operating_system_version", "processor", "page_id"]):
         total=Z_moment()                #total ROLLING STATS ACCUMULATION
         if len(values)<=1: continue     #CAN DO NOTHING WITH THIS ONE SAMPLE
-        
+        num_new=0
+                
         for count, v in enumerate(values):
-            s=Stats(count=v.count, mean=v.mean, std=v.std, biased=True)
-            if count>0:
+            s=Stats(
+                count=1,  #THE INTER-TEST VARIANCE IS SIGNIFICANT AND CAN
+                          #NOT BE EXPLAINED.  WE SIMPLY USE CONSIDER TEST SERIES
+                          #A SINGLE SAMPLE
+                #count=v.count,
+                mean=v.mean,
+                std=0, #v.std,
+                biased=True
+            )
+            if count>1: #NEED AT LEAST 2 SAMPLES TO GET A VARIANCE
                 #SEE HOW MUCH THE CURRENT STATS DEVIATES FROM total
                 t=z_moment2stats(total, unbiased=True)
-                confidence, diff=welchs_ttest(s, t)
-                if 1-CONFIDENCE_THRESHOLD < confidence:
+                confidence, diff=single_ttest(s.mean, t)
+                if MIN_CONFIDENCE < confidence and diff>0:
+                    num_new+=1
                     alerts.append(Map(
                         status="new",
                         create_time=datetime.utcnow(),
@@ -82,7 +98,7 @@ def exception_point (**env):
                         reason=REASON,
                         details=CNV.object2JSON({
                             "amount":diff,
-                            "confidence":v.confidence
+                            "confidence":confidence
                         }),
                         severity=SEVERITY,
                         confidence=confidence
@@ -94,6 +110,12 @@ def exception_point (**env):
             if count>=5:
                 total=total-values[count-5].m  #WINDOW LIMITED TO 5 SAMPLES
 
+        if debug: D.println(
+            "Testing ${key} with ${num_tests} samples, ${num_alerts} alerts",
+            {"key":keys, "num_tests":len(values), "num_alerts":num_new}
+        )
+
+    if debug: D.println("Get Current Alerts")
 
     #CHECK THE CURRENT ALERTS
     current_alerts=db.query("""
@@ -120,6 +142,7 @@ def exception_point (**env):
     lookup_alert=dict([(a.test_series, a) for a in alerts])
     lookup_current=dict([(c.test_series, c) for c in current_alerts])
 
+    if debug: D.println("Update alerts")
 
     for a in alerts:
         #CHECK IF ALREADY AN ALERT
@@ -148,6 +171,8 @@ def exception_point (**env):
         "reason":REASON
     })
 
+    if debug: D.println("Reviewing h0")
+
     update_h0_rejected(db, start_time)
 
 
@@ -171,7 +196,7 @@ def welchs_ttest(stats1, stats2):
 
 
     vpooled        = v1/n1 + v2/n2
-    tt             = (m1-m2)/sqrt(vpooled)
+    tt             = abs(m1-m2)/sqrt(vpooled)
 
     df_numerator   = power(vpooled, 2)
     df_denominator = power(v1/n1, 2)/(n1-1) + power(v2/n2, 2)/(n2-1)
@@ -179,3 +204,18 @@ def welchs_ttest(stats1, stats2):
 
     t_distribution = t(df)
     return t_distribution.cdf(tt), m1-m2
+
+
+
+def single_ttest(point, stats):
+    n1=stats.count
+    m1=stats.mean
+    v1=stats.variance
+
+    diff=point-m1
+
+    t_distribution = t(n1-1)
+
+    return t_distribution.cdf(abs(diff)/sqrt(v1)), diff
+#    return t_distribution.cdf(diff/sqrt(v1)), diff
+    

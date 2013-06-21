@@ -11,10 +11,11 @@ import datazilla.util.debug
 
 class Q:
     @staticmethod
-    def groupby(data, keys):
+    def groupby(data, keys=None, size=None):
     #return list of (keys, values) pairs where
     #group by the set of set of keys
     #values is list of all data that has those keys
+        if size is not None: return groupby_size(data, size)
         try:
             def keys2string(x): return "|".join([str(x[k]) for k in keys])
             def get_keys(d): return dict([(k, str(d[k])) for k in keys])
@@ -28,7 +29,9 @@ class Q:
             return output
         except Exception, e:
             datazilla.util.debug.D.error("Problem grouping", e)
-            
+
+
+
 
     @staticmethod
     def select(data, field_name):
@@ -36,3 +39,6 @@ class Q:
        return [d[field_name] for d in data]
 
 
+
+def groupby_size(data, size):
+    return [data[i:i+size] for i in range(0, len(data), size)]

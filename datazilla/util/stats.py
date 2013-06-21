@@ -31,15 +31,15 @@ def stats2z_moment(stats):
     m=Z_moment(stats.count, mz1, mz2, mz3, mz4)
     if DEBUG:
         v = z_moment2stats(m, unbiased=False)
-        if not closeEnough(v.count, stats.count) or \
-           not closeEnough(v.mean, stats.mean) or \
-           not closeEnough(v.variance, stats.variance):
+        if not closeEnough(v.count, stats.count): D.error("convertion error")
+        if not closeEnough(v.mean, stats.mean): D.error("convertion error")
+        if not closeEnough(v.variance, stats.variance):
             D.error("convertion error")
 
     return m
 
 def closeEnough(a, b):
-    if abs(a-b)<EPSILON*(abs(a)+abs(b)): return True
+    if abs(a-b)<=EPSILON*(abs(a)+abs(b)+1): return True
     return False
 
 
@@ -91,6 +91,24 @@ class Z_moment():
 
     def __sub__(self, other):
         return Z_moment(*map(sub, self.S, other.S))
+
+    @property
+    def tuple(self):
+        return self.S
+
+
+    @staticmethod
+    def new_instance(values):
+        values=[float(v) for v in values]
+
+        return Moments(*[
+            len(values),
+            sum([n for n in values]),
+            sum([pow(n, 2) for n in values]),
+            sum([pow(n, 3) for n in values]),
+            sum([pow(n, 4) for n in values])
+        ])
+
 
 
 def add(a,b):

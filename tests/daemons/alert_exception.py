@@ -4,12 +4,14 @@
 ## You can obtain one at http://mozilla.org/MPL/2.0/.
 ################################################################################
 from datetime import datetime, timedelta
-from datazilla.daemons.alert_exception import exception_point, REASON
+from math import sqrt
+from datazilla.daemons.alert_exception import exception_point, REASON, MIN_CONFIDENCE
 
 from datazilla.util.cnv import CNV
 from datazilla.util.db import SQL, DB
 from datazilla.util.debug import D
 from datazilla.util.map import Map
+from datazilla.util.query import Q
 from datazilla.util.stats import closeEnough
 from tests.util.testing import settings, make_test_database
 
@@ -24,8 +26,8 @@ class test_alert_exception:
         self.url="mozilla.com"
 
 
-    def test_alert_generated(self):
-        self._setup()
+    def test_alert_generated(self, test_data):
+        self._setup(test_data)
 
         exception_point (
             db=self.db,
@@ -54,7 +56,7 @@ class test_alert_exception:
         assert len(alert)==1
         assert alert[0].status=='new'
         assert closeEnough(alert[0].severity, EXPECTED_SEVERITY)
-        assert alert[0].confidence==1.0
+        assert alert[0].confidence>MIN_CONFIDENCE
 
         #VERIFY last_run HAS BEEEN UPDATED
         last_run=self.db.query(
@@ -88,16 +90,7 @@ class test_alert_exception:
 
 
 
-
-
-
-
-
-
-
-
-
-    def _setup(self):
+    def _setup(self, test_data):
         uid=self.db.query("SELECT util_newid() uid FROM DUAL")[0].uid
 
         ## VERFIY THE alert_reason EXISTS
@@ -124,15 +117,19 @@ class test_alert_exception:
 
         ## ENSURE THERE ARE NO ALERTS IN DB
         self.db.execute("DELETE FROM alert_mail WHERE reason=${reason}", {"reason":REASON})
+        self.insert_test_results(test_data)
 
+
+    def insert_test_results(self, test_data):
         ## diff_time IS REQUIRED TO TRANSLATE THE TEST DATE DATES TO SOMETHING MORE CURRENT
         now_time=CNV.datetime2unix(datetime.utcnow())
-        max_time=max([CNV.datetime2unix(CNV.string2datetime(t.date, "%Y-%b-%d %H:%M:%S")) for t in CNV.table2list(test_data.header, test_data.rows)])
+        max_time=max(Q.select(test_data, "timestamp"))
         diff_time=now_time-max_time
 
+
         ## INSERT THE TEST RESULTS
-        for t in CNV.table2list(test_data.header, test_data.rows):
-            time=CNV.datetime2unix(CNV.string2datetime(t.date, "%Y-%b-%d %H:%M:%S"))
+        for t in test_data:
+            time=t.timestamp
             time+=diff_time
 
             self.db.insert("test_data_all_dimensions",{
@@ -157,7 +154,7 @@ class test_alert_exception:
                 "test_name":"tp5o",
                 "page_url":self.url,
                 "mean":float(t.mean),
-                "std":float(t["mean+std"])-float(t.mean),
+                "std":sqrt(t.variance),
                 "h0_rejected":None,
                 "p":None,
                 "n_replicates":t.count,
@@ -173,8 +170,8 @@ class test_alert_exception:
 
 
 ## DEFINE SOME TEST DATA
-test_data=Map(**{
-    "header":("date", "count", "mean-std", "mean", "mean+std"),
+test_data1=Map(**{
+    "header":("date", "count", "mean-std", "mean", "mean+std", "reject"),
     "rows":[
         ("2013-Apr-05 13:55:00", "23", "655.048136994614", "668.5652173913044", "682.0822977879948"),
         ("2013-Apr-05 13:59:00", "23", "657.8717192954238", "673.3478260869565", "688.8239328784892"),
@@ -193,14 +190,66 @@ test_data=Map(**{
         ("2013-Apr-05 16:31:00", "23", "661.011102554583", "673.4347826086956", "685.8584626628083"),
         ("2013-Apr-05 16:55:00", "23", "655.9407699325201", "671.304347826087", "686.6679257196539"),
         ("2013-Apr-05 17:07:00", "23", "657.6412277100247", "667.5217391304348", "677.4022505508448"),
-        ("2013-Apr-05 17:12:00", "23", "598.3432138277318", "617.7391304347826", "637.1350470418334"),
-        ("2013-Apr-05 17:23:00", "23", "801.0537973113723", "822.1739130434783", "843.2940287755843")  # <--SPIKE IN DATA
+#        ("2013-Apr-05 17:12:00", "23", "598.3432138277318", "617.7391304347826", "637.1350470418334"),   # <--DIP IN DATA
+        ("2013-Apr-05 17:23:00", "23", "801.0537973113723", "822.1739130434783", "843.2940287755843", 1)  # <--SPIKE IN DATA
     ]
 })
+test_data1=[
+    Map(**{
+        "timestamp":CNV.datetime2unix(CNV.string2datetime(t.date, "%Y-%b-%d %H:%M:%S")),
+        "datetime":CNV.string2datetime(t.date, "%Y-%b-%d %H:%M:%S"),
+        "count":int(t.count),
+        "mean":float(t.mean),
+        "variance":pow(float(t["mean+std"])-float(t.mean), 2),
+        "reject":t.reject
+    })
+    for t in CNV.table2list(test_data1.header, test_data1.rows)
+]
+
+
+
+test_data2=Map(**{
+    "header":("timestamp", "mean", "std", "h0_rejected", "count"),
+    "rows":[
+        (1366388389, 295.36, 32.89741631, 0, 25),
+        (1366387915, 307.92, 32.86198412, 0, 25),
+        (1366390777, 309, 41.22802445, 0, 25),
+        (1366398771, 309.24, 34.18488945, 0, 25),
+        (1366401499, 308.2, 30.36170834, 0, 25),
+        (1366412504, 192.8, 46.27634385, 1, 25),    # Should be an alert
+        (1366421699, 298.04, 29.09249617, 0, 25),
+        (1366433920, 324.52, 28.13378752, 0, 25),
+        (1366445744, 302.2, 28.19131072, 0, 25),
+        (1366455408, 369.96, 31.25363979, 0, 25),
+        (1366474119, 313.12, 33.66541252, 0, 25),
+        (1366483789, 369.96, 30.81460693, 0, 25),
+        (1366498412, 311.76, 36.02462121, 0, 25),
+        (1366507773, 291.08, 27.86562996, 0, 25)
+    ]
+})
+test_data2=[
+    Map(**{
+        "timestamp":t.timestamp,
+        "datetime":CNV.unix2datetime(t.timestamp),
+        "count":t.count,
+        "mean":t.mean,
+        "variance":pow(t.std, 2),
+        "reject":t.h0_rejected
+    })
+    for t in CNV.table2list(test_data2.header, test_data2.rows)
+]
+
+
+
+
 
 make_test_database(settings)
 
 with DB(settings.database) as db:
     tester=test_alert_exception(db)
-    tester.test_alert_generated()
+    tester.test_alert_generated(test_data1)
+    db.rollback()  #REMEMBER NOTHING
+    db.begin()
+    tester=test_alert_exception(db)
+    tester.test_alert_generated(test_data2)
 

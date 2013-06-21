@@ -16,6 +16,7 @@ from datazilla.util.basic import nvl
 from datazilla.util.cnv import CNV
 from datazilla.util.debug import D
 from datazilla.util.map import Map
+from datazilla.util.query import Q
 from datazilla.util.strings import indent
 from datazilla.util.strings import outdent
 
@@ -179,14 +180,15 @@ class DB():
     def execute_backlog(self):
         if len(self.backlog)==0: return
 
-        sql=";\n".join(self.backlog)
-        try:
-            if self.debug: D.println("Execute block of SQL:\n"+indent(sql))
-            self.cursor.execute(sql)
-            self.cursor.close()
-            self.cursor = self.db.cursor()
-        except Exception, e:
-            D.error("Problem executing SQL:\n"+indent(sql.strip()), e, offset=1)
+        for g in Q.groupby(self.backlog, size=100):
+            sql=";\n".join(g)
+            try:
+                if self.debug: D.println("Execute block of SQL:\n"+indent(sql))
+                self.cursor.execute(sql)
+                self.cursor.close()
+                self.cursor = self.db.cursor()
+            except Exception, e:
+                D.error("Problem executing SQL:\n"+indent(sql.strip()), e, offset=1)
 
         self.backlog=[]
 

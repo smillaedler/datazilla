@@ -15,7 +15,7 @@ from datazilla.util.map import Map
 from datazilla.util.maths import bayesian_add
 from datazilla.util.query import Q
 from datazilla.util.strings import between
-from util.testing import settings, make_test_database
+from tests.util.testing import settings, make_test_database
 
 
 class test_alert:
